@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Local data / secrets
+*.db
+.env
+.recetario/
+
+# Node / Tauri (added in later phases)
+node_modules/
+desktop/src-tauri/target/
+dist/

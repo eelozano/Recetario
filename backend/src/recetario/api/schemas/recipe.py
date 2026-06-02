@@ -61,6 +61,7 @@ class IngredientLineOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int | None = None
+    position: int = 0
     name: str
     quantity: Decimal | None = None
     unit: str | None = None
@@ -105,6 +106,7 @@ class RecipeOut(BaseModel):
             ingredients=[
                 IngredientLineOut(
                     id=line.id,
+                    position=line.position,
                     name=line.ingredient.name,
                     quantity=line.quantity,
                     unit=line.unit,

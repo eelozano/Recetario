@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8765
 
+    # USDA FoodData Central API key (free, https://fdc.nal.usda.gov/api-key-signup.html).
+    # Required only by the nutrition seeder / live lookups, not for normal app runtime.
+    fdc_api_key: str | None = None
+
     def ensure_sqlite_dir(self) -> None:
         if self.database_url.startswith("sqlite:///"):
             path = Path(self.database_url.removeprefix("sqlite:///"))

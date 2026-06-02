@@ -11,6 +11,11 @@ from collections.abc import Iterator
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from recetario.application.use_cases.nutrition import (
+    CalculateRecipeMacros,
+    LinkRecipeIngredientToUsda,
+    SearchCachedFoods,
+)
 from recetario.application.use_cases.recipes import (
     CreateRecipe,
     DeleteRecipe,
@@ -18,7 +23,9 @@ from recetario.application.use_cases.recipes import (
     ListRecipes,
     UpdateRecipe,
 )
+from recetario.domain.services.macro_calculator import MacroCalculator
 from recetario.infrastructure.db.repositories import (
+    SqlAlchemyNutritionRepository,
     SqlAlchemyRecipeRepository,
     SqlAlchemyTagRepository,
 )
@@ -41,6 +48,12 @@ def get_tag_repository(session: Session = Depends(get_session)) -> SqlAlchemyTag
     return SqlAlchemyTagRepository(session)
 
 
+def get_nutrition_repository(
+    session: Session = Depends(get_session),
+) -> SqlAlchemyNutritionRepository:
+    return SqlAlchemyNutritionRepository(session)
+
+
 def create_recipe_uc(repo: SqlAlchemyRecipeRepository = Depends(get_recipe_repository)):
     return CreateRecipe(repo)
 
@@ -59,3 +72,23 @@ def update_recipe_uc(repo: SqlAlchemyRecipeRepository = Depends(get_recipe_repos
 
 def delete_recipe_uc(repo: SqlAlchemyRecipeRepository = Depends(get_recipe_repository)):
     return DeleteRecipe(repo)
+
+
+def calculate_macros_uc(
+    recipes: SqlAlchemyRecipeRepository = Depends(get_recipe_repository),
+    nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
+) -> CalculateRecipeMacros:
+    return CalculateRecipeMacros(recipes, nutrition, MacroCalculator())
+
+
+def link_ingredient_uc(
+    recipes: SqlAlchemyRecipeRepository = Depends(get_recipe_repository),
+    nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
+) -> LinkRecipeIngredientToUsda:
+    return LinkRecipeIngredientToUsda(recipes, nutrition)
+
+
+def search_foods_uc(
+    nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
+) -> SearchCachedFoods:
+    return SearchCachedFoods(nutrition)

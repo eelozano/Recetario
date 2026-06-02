@@ -16,7 +16,6 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy import Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -90,5 +89,69 @@ class TagModel(TimestampMixin, Base):
     recipes: Mapped[list[RecipeModel]] = relationship(secondary=recipe_tags, back_populates="tags")
 
 
+# --- USDA FoodData Central cache (Phase 2) -----------------------------------
+# A local subset of FDC, populated by the seeder. Nutrient amounts are stored on
+# a per-100g basis (the FDC convention for SR Legacy / Foundation foods), which
+# the MacroCalculator scales by each line's gram_weight.
+
+
+class NutrientModel(TimestampMixin, Base):
+    """Reference table of the nutrients we track (calories, protein, fat, …)."""
+
+    __tablename__ = "nutrients"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usda_nutrient_id: Mapped[int] = mapped_column(Integer, unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+    unit: Mapped[str] = mapped_column(String(16))
+
+
+class UsdaFoodModel(TimestampMixin, Base):
+    __tablename__ = "usda_foods"
+
+    # fdc_id is FDC's own stable identifier — use it directly as the PK.
+    fdc_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    description: Mapped[str] = mapped_column(String(512))
+    data_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    nutrients: Mapped[list["UsdaFoodNutrientModel"]] = relationship(
+        back_populates="food", cascade="all, delete-orphan"
+    )
+    portions: Mapped[list["UsdaFoodPortionModel"]] = relationship(
+        back_populates="food", cascade="all, delete-orphan"
+    )
+
+
+class UsdaFoodNutrientModel(TimestampMixin, Base):
+    __tablename__ = "usda_food_nutrients"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fdc_id: Mapped[int] = mapped_column(ForeignKey("usda_foods.fdc_id", ondelete="CASCADE"))
+    nutrient_id: Mapped[int] = mapped_column(ForeignKey("nutrients.id"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 4))  # per 100 g
+    unit_name: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    food: Mapped[UsdaFoodModel] = relationship(back_populates="nutrients")
+    nutrient: Mapped[NutrientModel] = relationship(lazy="joined")
+
+
+class UsdaFoodPortionModel(TimestampMixin, Base):
+    __tablename__ = "usda_food_portions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fdc_id: Mapped[int] = mapped_column(ForeignKey("usda_foods.fdc_id", ondelete="CASCADE"))
+    portion_description: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    gram_weight: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+
+    food: Mapped[UsdaFoodModel] = relationship(back_populates="portions")
+
+
 Index("ix_recipes_title", RecipeModel.title)
-UniqueConstraint(IngredientModel.normalized_name, name="uq_ingredients_normalized_name")
+Index("ix_usda_foods_description", UsdaFoodModel.description)
+Index(
+    "ix_usda_food_nutrients_fdc_nutrient",
+    UsdaFoodNutrientModel.fdc_id,
+    UsdaFoodNutrientModel.nutrient_id,
+    unique=True,
+)

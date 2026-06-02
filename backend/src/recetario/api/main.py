@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from recetario.api.routers import health, recipes
+from recetario.api.routers import health, nutrition, recipes
 from recetario.infrastructure.config import Settings, get_settings
 from recetario.infrastructure.db.session import create_db_engine, create_session_factory
 
@@ -30,6 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(recipes.router)
     app.include_router(recipes.tags_router)
+    app.include_router(nutrition.router)
     return app
 
 

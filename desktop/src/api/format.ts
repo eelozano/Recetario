@@ -63,3 +63,18 @@ export function formatAmount(value: string | number | null | undefined): string 
   // Keep up to 1 decimal place; integers render clean.
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
+
+/**
+ * Format an ingredient quantity for the human-readable list. Unlike
+ * formatAmount it preserves fractional precision (e.g. 0.5, 1.25) and trims
+ * trailing zeros, returning null when there is no quantity.
+ */
+export function formatQuantity(
+  value: string | number | null | undefined,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === "string" ? Number(value) : value;
+  if (Number.isNaN(n)) return typeof value === "string" ? value : null;
+  // Round to 3 dp then drop trailing zeros: 0.50 -> "0.5", 3.000 -> "3".
+  return String(Number(n.toFixed(3)));
+}

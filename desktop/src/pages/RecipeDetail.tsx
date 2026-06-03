@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, type MacroBreakdown, type RecipeOut } from "../api/client";
-import { formatAmount, macroLabel, macroUnit, orderedMacroKeys } from "../api/format";
+import {
+  formatAmount,
+  formatQuantity,
+  macroLabel,
+  macroUnit,
+  orderedMacroKeys,
+} from "../api/format";
+
+type IngredientLine = RecipeOut["ingredients"][number];
 
 interface Props {
   recipeId: number;
@@ -66,6 +74,10 @@ export function RecipeDetail({ recipeId }: Props) {
 
       <SummaryCards macros={macros} columns={columns} />
 
+      <IngredientList ingredients={recipe.ingredients} />
+
+      <Directions instructionsMd={recipe.instructions_md} />
+
       <section>
         <h2 className="section-title">Per-ingredient breakdown</h2>
         {columns.length === 0 ? (
@@ -127,6 +139,65 @@ export function RecipeDetail({ recipeId }: Props) {
       </section>
     </div>
   );
+}
+
+/** Compose a human-readable line: "3 pc Yellow onion (finely sliced)". */
+function ingredientText(line: IngredientLine): string {
+  const qty = formatQuantity(line.quantity);
+  const parts = [qty, line.unit?.trim(), line.name?.trim()].filter(
+    (p): p is string => Boolean(p && p.length),
+  );
+  let text = parts.join(" ").trim();
+  // Fall back to the originally parsed string if we have nothing structured.
+  if (!text) text = line.raw_text?.trim() ?? "";
+  if (line.notes?.trim()) text += ` (${line.notes.trim()})`;
+  return text;
+}
+
+function IngredientList({ ingredients }: { ingredients: IngredientLine[] }) {
+  if (!ingredients.length) return null;
+  const ordered = [...ingredients].sort((a, b) => a.position - b.position);
+  return (
+    <section>
+      <h2 className="section-title">Ingredients</h2>
+      <ul className="ingredient-list">
+        {ordered.map((line, i) => (
+          <li key={line.id ?? i}>{ingredientText(line)}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Render the directions markdown. We keep this dependency-free: numbered or
+ * bulleted lines become an ordered list of steps; blank lines separate them.
+ */
+function Directions({ instructionsMd }: { instructionsMd: string | null }) {
+  const steps = parseSteps(instructionsMd);
+  if (!steps.length) return null;
+  return (
+    <section>
+      <h2 className="section-title">Directions</h2>
+      <ol className="directions">
+        {steps.map((step, i) => (
+          <li key={i}>{step}</li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** Split directions markdown into clean step strings (markers stripped). */
+function parseSteps(md: string | null | undefined): string[] {
+  if (!md) return [];
+  return md
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length)
+    // Strip leading "1." / "1)" / "-" / "*" / "#" markers.
+    .map((l) => l.replace(/^(#{1,6}\s+|\d+[.)]\s+|[-*]\s+)/, "").trim())
+    .filter((l) => l.length);
 }
 
 function SummaryCards({

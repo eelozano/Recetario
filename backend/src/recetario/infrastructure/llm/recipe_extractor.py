@@ -29,7 +29,7 @@ from recetario.application.dto import (
 )
 from recetario.application.ports import ExtractError, NutritionProvider
 
-_DEFAULT_MODEL = "claude-opus-4-7"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 _STRUCTURE_SYSTEM = (
     "You normalize scraped recipe drafts. For each ingredient line, extract a "

@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     # extra LLM pass to parse ingredient quantities and match USDA foods. Absent,
     # ingestion falls back to the deterministic scraper only.
     anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-4-7"
+    # Sonnet is the right tier for ingestion: bounded extraction + tool-use, far
+    # cheaper/faster than Opus with no meaningful quality loss. Override per-env.
+    anthropic_model: str = "claude-sonnet-4-6"
 
     def ensure_sqlite_dir(self) -> None:
         if self.database_url.startswith("sqlite:///"):

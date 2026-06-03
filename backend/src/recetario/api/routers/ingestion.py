@@ -17,9 +17,11 @@ from recetario.application.use_cases.ingestion import (
     IngestionJobNotFoundError,
     ListIngestionJobs,
     RunUrlIngestion,
+    RunVideoIngestion,
     StartUrlIngestion,
 )
 from recetario.application.use_cases.recipes import CreateRecipe
+from recetario.domain.entities import IngestionInputType
 from recetario.infrastructure.db.repositories import (
     SqlAlchemyIngestionJobRepository,
     SqlAlchemyNutritionRepository,
@@ -29,41 +31,62 @@ from recetario.infrastructure.db.repositories import (
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
 
-def _build_enrich(request: Request, session) -> tuple[EnrichDraftRecipe | None, object | None]:
-    """Assemble the optional LLM enricher for this job.
+def _build_components(request: Request, session):
+    """Assemble the optional LLM extractor, FDC provider, and enricher.
 
-    Returns (enricher, provider). The provider (a live FDC client) is returned
-    separately so the caller can close its HTTP connection after the job. Both
-    are None unless an extractor *and* a nutrition provider are configured —
-    USDA matching needs both, and enrichment is purely additive otherwise.
+    Returns `(extractor, provider, enrich)`. The extractor alone drives video
+    extraction; the enricher (extractor + provider) drives USDA matching and is
+    None unless both are configured. The live provider is returned so the caller
+    can close its HTTP connection after the job. If a provider was opened without
+    an extractor that could use it, it's closed here and returned as None.
     """
     extractor_factory = getattr(request.app.state, "extractor_factory", None)
     provider_factory = getattr(request.app.state, "nutrition_provider_factory", None)
     extractor = extractor_factory() if extractor_factory else None
     provider = provider_factory() if provider_factory else None
-    if extractor is None or provider is None:
-        if provider is not None and hasattr(provider, "close"):
-            provider.close()
-        return None, None
-    enrich = EnrichDraftRecipe(extractor, provider, SqlAlchemyNutritionRepository(session))
-    return enrich, provider
+
+    if extractor is not None and provider is not None:
+        enrich = EnrichDraftRecipe(
+            extractor, provider, SqlAlchemyNutritionRepository(session)
+        )
+        return extractor, provider, enrich
+
+    if extractor is None and provider is not None and hasattr(provider, "close"):
+        provider.close()
+        provider = None
+    return extractor, provider, None
 
 
 def _run_job(request: Request, job_id: int) -> None:
-    """Background worker: runs with its own DB session and scraper instance.
+    """Background worker: runs with its own DB session and adapter instances.
 
     The request-scoped session is already closed by the time this fires, so we
-    open a fresh one from the app's session factory. The scraper comes from
-    `app.state.scraper_factory`, which tests override to avoid live network.
+    open a fresh one from the app's session factory. The job's `input_type`
+    selects the web (scraper) or video (yt-dlp + LLM) pipeline. Adapter factories
+    on `app.state` are overridden by tests to avoid live network/LLM calls.
     """
-    session_factory = request.app.state.session_factory
-    scraper_factory = request.app.state.scraper_factory
-    session = session_factory()
-    enrich, provider = _build_enrich(request, session)
+    session = request.app.state.session_factory()
+    extractor, provider, enrich = _build_components(request, session)
     try:
         jobs = SqlAlchemyIngestionJobRepository(session)
         create_recipe = CreateRecipe(SqlAlchemyRecipeRepository(session))
-        RunUrlIngestion(jobs, create_recipe, scraper_factory(), enrich)(job_id)
+        job = jobs.get(job_id)
+        if job is None:
+            return
+
+        if job.input_type is IngestionInputType.VIDEO:
+            if extractor is None:
+                job.mark_failed(
+                    "Video import requires an Anthropic API key "
+                    "(set RECETARIO_ANTHROPIC_API_KEY)."
+                )
+                jobs.update(job)
+                return
+            fetcher = request.app.state.video_fetcher_factory()
+            RunVideoIngestion(jobs, create_recipe, fetcher, extractor, enrich)(job_id)
+        else:
+            scraper = request.app.state.scraper_factory()
+            RunUrlIngestion(jobs, create_recipe, scraper, enrich)(job_id)
     finally:
         if provider is not None and hasattr(provider, "close"):
             provider.close()
@@ -77,7 +100,7 @@ def create_ingestion_job(
     request: Request,
     uc: StartUrlIngestion = Depends(deps.start_ingestion_uc),
 ):
-    job = uc(payload.url)
+    job = uc(payload.url, payload.input_type)
     background.add_task(_run_job, request, job.id)
     return IngestionJobOut.from_domain(job)
 

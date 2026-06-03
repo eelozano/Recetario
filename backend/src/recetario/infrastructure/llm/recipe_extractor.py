@@ -1,18 +1,21 @@
 """Claude-backed recipe extractor (implements the LlmRecipeExtractor port).
 
-Two LLM passes, both grounded so the output stays reviewable:
+Three LLM passes, all grounded so the output stays reviewable:
 
 * `structure` — refines a scraped draft, parsing each raw ingredient line into
   quantity/unit/name and tidying the title/servings. Constrained to a JSON
   schema via `output_config.format`, so the response is always valid JSON.
+* `extract_from_transcript` — turns a free-form video transcript (captions) into
+  a structured draft (title, servings, parsed ingredients, steps), same schema.
 * `resolve_nutrition` — matches each ingredient to a USDA FoodData Central entry.
   Claude drives a `search_usda` tool (backed by the live `NutritionProvider`)
   in an agentic loop, then emits a structured list of {index, fdc_id,
   gram_weight, confidence}. The use case applies only confident matches.
 
 The JSON→DTO mapping lives in module-level pure functions (`apply_structured`,
-`parse_resolved`) so it is unit-tested against fixtures without any network or
-SDK. The `anthropic` SDK is imported lazily so mocked tests never need it.
+`recipe_from_transcript`, `parse_resolved`) so it is unit-tested against fixtures
+without any network or SDK. The `anthropic` SDK is imported lazily so mocked
+tests never need it.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ from recetario.application.dto import (
     ResolvedIngredient,
 )
 from recetario.application.ports import ExtractError, NutritionProvider
+from recetario.domain.entities import RecipeStatus, SourceType
 
 _DEFAULT_MODEL = "claude-sonnet-4-6"
 
@@ -37,6 +41,19 @@ _STRUCTURE_SYSTEM = (
     "units from the name). Keep the original line verbatim as raw_text. Use null "
     "for a quantity or unit that is absent or non-numeric (e.g. 'to taste'). Do "
     "not invent ingredients, steps, or servings — only restructure what is given."
+)
+
+_EXTRACT_SYSTEM = (
+    "You extract a single recipe from a video transcript (auto-captions, so the "
+    "text may be messy, repetitive, or lack punctuation). Produce a clean title, "
+    "the number of servings if stated (else null), an ordered ingredient list, "
+    "and ordered preparation steps. For each ingredient give a numeric quantity, "
+    "a unit, and the bare ingredient name; use null for a quantity or unit that "
+    "is not stated. Set raw_text to the phrase from the transcript that mentions "
+    "the ingredient (or the name if there is no distinct phrase). Only include "
+    "ingredients and steps actually described in the transcript — never invent "
+    "amounts or steps. If the transcript is not a recipe, return an empty "
+    "ingredients array."
 )
 
 _RESOLUTION_SYSTEM = (
@@ -74,6 +91,34 @@ _STRUCTURE_FORMAT: dict[str, Any] = {
             },
         },
         "required": ["title", "servings", "ingredients"],
+        "additionalProperties": False,
+    },
+}
+
+_EXTRACT_FORMAT: dict[str, Any] = {
+    "type": "json_schema",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "servings": {"type": ["integer", "null"]},
+            "ingredients": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "quantity": {"type": ["number", "null"]},
+                        "unit": {"type": ["string", "null"]},
+                        "raw_text": {"type": "string"},
+                    },
+                    "required": ["name", "quantity", "unit", "raw_text"],
+                    "additionalProperties": False,
+                },
+            },
+            "steps": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["title", "servings", "ingredients", "steps"],
         "additionalProperties": False,
     },
 }
@@ -128,16 +173,11 @@ def _to_decimal(value: Any) -> Decimal | None:
         return None
 
 
-def apply_structured(draft: RecipeInput, payload: dict[str, Any]) -> RecipeInput:
-    """Fold the LLM's structuring JSON back onto the scraped draft.
-
-    Carries over everything the LLM does not touch (source, status, steps, tags).
-    """
-    items = payload.get("ingredients")
+def _ingredients_from_items(items: Any) -> list[RecipeIngredientInput]:
+    """Map an LLM ingredients array into DTOs, dropping unnamed rows."""
     if not isinstance(items, list):
-        raise ExtractError("Structuring response had no ingredients array.")
-
-    ingredients = [
+        raise ExtractError("Response had no ingredients array.")
+    return [
         RecipeIngredientInput(
             name=str(item.get("name", "")).strip(),
             quantity=_to_decimal(item.get("quantity")),
@@ -147,6 +187,14 @@ def apply_structured(draft: RecipeInput, payload: dict[str, Any]) -> RecipeInput
         for item in items
         if isinstance(item, dict) and str(item.get("name", "")).strip()
     ]
+
+
+def apply_structured(draft: RecipeInput, payload: dict[str, Any]) -> RecipeInput:
+    """Fold the LLM's structuring JSON back onto the scraped draft.
+
+    Carries over everything the LLM does not touch (source, status, steps, tags).
+    """
+    ingredients = _ingredients_from_items(payload.get("ingredients"))
 
     title = payload.get("title")
     title = title.strip() if isinstance(title, str) and title.strip() else draft.title
@@ -165,6 +213,43 @@ def apply_structured(draft: RecipeInput, payload: dict[str, Any]) -> RecipeInput
         instructions_md=draft.instructions_md,
         ingredients=ingredients or draft.ingredients,
         tags=list(draft.tags),
+    )
+
+
+def recipe_from_transcript(
+    payload: dict[str, Any], *, source_url: str | None
+) -> RecipeInput:
+    """Build a draft RecipeInput from the transcript-extraction JSON.
+
+    Raises ExtractError if the transcript yielded no recipe (no ingredients) so
+    the video job fails cleanly rather than persisting an empty draft.
+    """
+    ingredients = _ingredients_from_items(payload.get("ingredients"))
+    if not ingredients:
+        raise ExtractError("No recipe could be extracted from the video transcript.")
+
+    title = payload.get("title")
+    title = title.strip() if isinstance(title, str) and title.strip() else "Untitled recipe"
+
+    servings = payload.get("servings")
+    servings = servings if isinstance(servings, int) else None
+
+    steps = payload.get("steps")
+    step_lines = (
+        [s.strip() for s in steps if isinstance(s, str) and s.strip()]
+        if isinstance(steps, list)
+        else []
+    )
+    instructions_md = "\n".join(step_lines) if step_lines else None
+
+    return RecipeInput(
+        title=title,
+        source_url=source_url,
+        source_type=SourceType.VIDEO,
+        servings=servings,
+        status=RecipeStatus.DRAFT,
+        instructions_md=instructions_md,
+        ingredients=ingredients,
     )
 
 
@@ -279,6 +364,25 @@ class AnthropicRecipeExtractor:
         except Exception as exc:  # noqa: BLE001 - normalize to the port's error
             raise ExtractError(f"LLM structuring failed: {exc}") from exc
         return apply_structured(draft, _first_json(resp))
+
+    def extract_from_transcript(
+        self, transcript: str, *, source_url: str | None
+    ) -> RecipeInput:
+        if not transcript.strip():
+            raise ExtractError("The transcript was empty.")
+        client = self._get_client()
+        prompt = "Extract the recipe from this video transcript:\n\n" + transcript
+        try:
+            resp = client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                system=_EXTRACT_SYSTEM,
+                output_config={"format": _EXTRACT_FORMAT},
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize to the port's error
+            raise ExtractError(f"LLM transcript extraction failed: {exc}") from exc
+        return recipe_from_transcript(_first_json(resp), source_url=source_url)
 
     def resolve_nutrition(
         self,

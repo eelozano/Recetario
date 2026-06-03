@@ -21,6 +21,14 @@ class ScrapeError(Exception):
     """Raised when a source URL cannot be fetched or parsed into a recipe."""
 
 
+class TranscriptError(ScrapeError):
+    """Raised when a video has no usable captions/transcript to extract from.
+
+    Subclasses ScrapeError so the job runner records it as a clean, user-facing
+    failure (same terminal-state handling as a failed web scrape).
+    """
+
+
 class ExtractError(Exception):
     """Raised when the LLM extractor cannot structure or resolve a draft.
 
@@ -33,16 +41,32 @@ class RecipeScraper(Protocol):
     def scrape(self, url: str) -> RecipeInput: ...
 
 
+class VideoTranscriptFetcher(Protocol):
+    """Pulls a plain-text transcript from a video URL (captions, no ASR).
+
+    Implementations use existing manual/auto captions (e.g. via yt-dlp) and raise
+    `TranscriptError` when none are available — audio transcription (ASR) is a
+    deferred fallback, not part of this port.
+    """
+
+    def fetch_transcript(self, url: str) -> str: ...
+
+
 class LlmRecipeExtractor(Protocol):
     """The LLM decisions only — retrieval and persistence stay in the use case.
 
     `structure` refines a scraped draft (parsing each ingredient line into
-    quantity/unit/name and tidying title/servings). `resolve_nutrition` matches
-    each line to a USDA food, using the live `search` provider to look up
+    quantity/unit/name and tidying title/servings). `extract_from_transcript`
+    turns a free-form video transcript into a structured draft. `resolve_nutrition`
+    matches each line to a USDA food, using the live `search` provider to look up
     candidates, and reports a per-line confidence so low matches can be deferred.
     """
 
     def structure(self, draft: RecipeInput) -> RecipeInput: ...
+
+    def extract_from_transcript(
+        self, transcript: str, *, source_url: str | None
+    ) -> RecipeInput: ...
 
     def resolve_nutrition(
         self,

@@ -21,7 +21,7 @@ class JobStatus(str, Enum):
 
 
 class IngestionInputType(str, Enum):
-    """How the source should be fetched. Only WEB is wired in this slice."""
+    """How the source should be fetched: a web page (scraper) or a video (captions)."""
 
     WEB = "web"
     VIDEO = "video"

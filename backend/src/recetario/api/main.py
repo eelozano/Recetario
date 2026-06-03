@@ -12,6 +12,7 @@ from recetario.application.ports import LlmRecipeExtractor, NutritionProvider
 from recetario.infrastructure.config import Settings, get_settings
 from recetario.infrastructure.db.session import create_db_engine, create_session_factory
 from recetario.infrastructure.scraping import RecipeScrapersAdapter
+from recetario.infrastructure.video import YtDlpTranscriptFetcher
 
 
 def _make_extractor_factory(
@@ -54,9 +55,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
-    # Background ingestion builds a scraper from this factory; tests override it
-    # with a fake to keep the suite offline.
+    # Background ingestion builds a scraper (web) or transcript fetcher (video)
+    # from these factories; tests override them with fakes to stay offline.
     app.state.scraper_factory = RecipeScrapersAdapter
+    app.state.video_fetcher_factory = YtDlpTranscriptFetcher
     # Optional LLM enrichment of scraped drafts. Both factories return None when
     # their API key is absent; tests override them to exercise the path offline.
     app.state.extractor_factory = _make_extractor_factory(settings)

@@ -10,7 +10,11 @@ from recetario.domain.entities import IngestionInputType, IngestionJob, JobStatu
 
 
 class IngestionJobCreate(BaseModel):
-    url: str = Field(min_length=1, description="Recipe page URL to import.")
+    url: str = Field(min_length=1, description="Recipe page or video URL to import.")
+    input_type: IngestionInputType | None = Field(
+        default=None,
+        description="Force 'web' or 'video' handling; auto-detected from the URL when omitted.",
+    )
 
 
 class IngestionJobOut(BaseModel):

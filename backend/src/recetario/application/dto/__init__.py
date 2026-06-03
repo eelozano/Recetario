@@ -1,3 +1,4 @@
+from recetario.application.dto.ingestion_dto import ResolvedIngredient
 from recetario.application.dto.nutrition_dto import (
     FoodDetail,
     FoodNutrient,
@@ -16,4 +17,5 @@ __all__ = [
     "FoodSummary",
     "RecipeIngredientInput",
     "RecipeInput",
+    "ResolvedIngredient",
 ]

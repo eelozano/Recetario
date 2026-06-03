@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # Required only by the nutrition seeder / live lookups, not for normal app runtime.
     fdc_api_key: str | None = None
 
+    # Anthropic API key. When set (alongside fdc_api_key), URL ingestion runs an
+    # extra LLM pass to parse ingredient quantities and match USDA foods. Absent,
+    # ingestion falls back to the deterministic scraper only.
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-opus-4-7"
+
     def ensure_sqlite_dir(self) -> None:
         if self.database_url.startswith("sqlite:///"):
             path = Path(self.database_url.removeprefix("sqlite:///"))

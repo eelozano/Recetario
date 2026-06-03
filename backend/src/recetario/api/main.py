@@ -2,13 +2,48 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from recetario.api.routers import health, ingestion, nutrition, recipes
+from recetario.application.ports import LlmRecipeExtractor, NutritionProvider
 from recetario.infrastructure.config import Settings, get_settings
 from recetario.infrastructure.db.session import create_db_engine, create_session_factory
 from recetario.infrastructure.scraping import RecipeScrapersAdapter
+
+
+def _make_extractor_factory(
+    settings: Settings,
+) -> Callable[[], LlmRecipeExtractor | None]:
+    """LLM enrichment is opt-in: only built when an Anthropic key is configured."""
+    if not settings.anthropic_api_key:
+        return lambda: None
+
+    def build() -> LlmRecipeExtractor | None:
+        from recetario.infrastructure.llm import AnthropicRecipeExtractor
+
+        return AnthropicRecipeExtractor(
+            settings.anthropic_api_key, model=settings.anthropic_model
+        )
+
+    return build
+
+
+def _make_provider_factory(
+    settings: Settings,
+) -> Callable[[], NutritionProvider | None]:
+    """USDA matching needs the live FDC provider; absent a key, it's unavailable."""
+    if not settings.fdc_api_key:
+        return lambda: None
+
+    def build() -> NutritionProvider | None:
+        from recetario.infrastructure.nutrition.fdc_client import UsdaFdcClient
+
+        return UsdaFdcClient(settings.fdc_api_key)
+
+    return build
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,6 +57,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Background ingestion builds a scraper from this factory; tests override it
     # with a fake to keep the suite offline.
     app.state.scraper_factory = RecipeScrapersAdapter
+    # Optional LLM enrichment of scraped drafts. Both factories return None when
+    # their API key is absent; tests override them to exercise the path offline.
+    app.state.extractor_factory = _make_extractor_factory(settings)
+    app.state.nutrition_provider_factory = _make_provider_factory(settings)
 
     # The Tauri/web client is a separate origin during dev.
     app.add_middleware(

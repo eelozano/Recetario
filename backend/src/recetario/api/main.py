@@ -5,9 +5,10 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from recetario.api.routers import health, nutrition, recipes
+from recetario.api.routers import health, ingestion, nutrition, recipes
 from recetario.infrastructure.config import Settings, get_settings
 from recetario.infrastructure.db.session import create_db_engine, create_session_factory
+from recetario.infrastructure.scraping import RecipeScrapersAdapter
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -18,6 +19,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
+    # Background ingestion builds a scraper from this factory; tests override it
+    # with a fake to keep the suite offline.
+    app.state.scraper_factory = RecipeScrapersAdapter
 
     # The Tauri/web client is a separate origin during dev.
     app.add_middleware(
@@ -31,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(recipes.router)
     app.include_router(recipes.tags_router)
     app.include_router(nutrition.router)
+    app.include_router(ingestion.router)
     return app
 
 

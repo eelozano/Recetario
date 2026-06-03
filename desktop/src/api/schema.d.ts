@@ -126,6 +126,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ingestion/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ingestion Jobs */
+        get: operations["list_ingestion_jobs_ingestion_jobs_get"];
+        put?: never;
+        /** Create Ingestion Job */
+        post: operations["create_ingestion_job_ingestion_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ingestion/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ingestion Job */
+        get: operations["get_ingestion_job_ingestion_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -143,6 +178,39 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * IngestionInputType
+         * @description How the source should be fetched. Only WEB is wired in this slice.
+         * @enum {string}
+         */
+        IngestionInputType: "web" | "video";
+        /** IngestionJobCreate */
+        IngestionJobCreate: {
+            /**
+             * Url
+             * @description Recipe page URL to import.
+             */
+            url: string;
+        };
+        /** IngestionJobOut */
+        IngestionJobOut: {
+            /** Id */
+            id: number;
+            /** Input Url */
+            input_url: string;
+            input_type: components["schemas"]["IngestionInputType"];
+            status: components["schemas"]["JobStatus"];
+            /** Progress */
+            progress: number;
+            /** Result Recipe Id */
+            result_recipe_id: number | null;
+            /** Error */
+            error: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
         };
         /** IngredientLineIn */
         IngredientLineIn: {
@@ -185,6 +253,11 @@ export interface components {
             /** Gram Weight */
             gram_weight?: string | null;
         };
+        /**
+         * JobStatus
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "succeeded" | "failed";
         /** LineMacroOut */
         LineMacroOut: {
             /** Recipe Ingredient Id */
@@ -614,6 +687,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FoodSummaryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ingestion_jobs_ingestion_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobOut"][];
+                };
+            };
+        };
+    };
+    create_ingestion_job_ingestion_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestionJobCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ingestion_job_ingestion_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobOut"];
                 };
             };
             /** @description Validation Error */

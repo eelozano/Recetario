@@ -89,6 +89,24 @@ class TagModel(TimestampMixin, Base):
     recipes: Mapped[list[RecipeModel]] = relationship(secondary=recipe_tags, back_populates="tags")
 
 
+class IngestionJobModel(TimestampMixin, Base):
+    """A recipe-import job (scrape a URL → draft recipe). Decouples the UI from
+    long-running parse work; the UI polls `status` until succeeded/failed."""
+
+    __tablename__ = "ingestion_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    input_url: Mapped[str] = mapped_column(String(2048))
+    input_type: Mapped[str] = mapped_column(String(16), default="web")
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    # SET NULL (not CASCADE): deleting the produced recipe shouldn't erase job history.
+    result_recipe_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 # --- USDA FoodData Central cache (Phase 2) -----------------------------------
 # A local subset of FDC, populated by the seeder. Nutrient amounts are stored on
 # a per-100g basis (the FDC convention for SR Legacy / Foundation foods), which

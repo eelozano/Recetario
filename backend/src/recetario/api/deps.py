@@ -11,6 +11,11 @@ from collections.abc import Iterator
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from recetario.application.use_cases.ingestion import (
+    GetIngestionJob,
+    ListIngestionJobs,
+    StartUrlIngestion,
+)
 from recetario.application.use_cases.nutrition import (
     CalculateRecipeMacros,
     LinkRecipeIngredientToUsda,
@@ -25,6 +30,7 @@ from recetario.application.use_cases.recipes import (
 )
 from recetario.domain.services.macro_calculator import MacroCalculator
 from recetario.infrastructure.db.repositories import (
+    SqlAlchemyIngestionJobRepository,
     SqlAlchemyNutritionRepository,
     SqlAlchemyRecipeRepository,
     SqlAlchemyTagRepository,
@@ -52,6 +58,12 @@ def get_nutrition_repository(
     session: Session = Depends(get_session),
 ) -> SqlAlchemyNutritionRepository:
     return SqlAlchemyNutritionRepository(session)
+
+
+def get_ingestion_repository(
+    session: Session = Depends(get_session),
+) -> SqlAlchemyIngestionJobRepository:
+    return SqlAlchemyIngestionJobRepository(session)
 
 
 def create_recipe_uc(repo: SqlAlchemyRecipeRepository = Depends(get_recipe_repository)):
@@ -92,3 +104,21 @@ def search_foods_uc(
     nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
 ) -> SearchCachedFoods:
     return SearchCachedFoods(nutrition)
+
+
+def start_ingestion_uc(
+    jobs: SqlAlchemyIngestionJobRepository = Depends(get_ingestion_repository),
+) -> StartUrlIngestion:
+    return StartUrlIngestion(jobs)
+
+
+def get_ingestion_job_uc(
+    jobs: SqlAlchemyIngestionJobRepository = Depends(get_ingestion_repository),
+) -> GetIngestionJob:
+    return GetIngestionJob(jobs)
+
+
+def list_ingestion_jobs_uc(
+    jobs: SqlAlchemyIngestionJobRepository = Depends(get_ingestion_repository),
+) -> ListIngestionJobs:
+    return ListIngestionJobs(jobs)

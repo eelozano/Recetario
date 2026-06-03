@@ -30,6 +30,8 @@ def _to_domain(data: RecipeInput) -> Recipe:
             raw_text=line.raw_text,
             notes=line.notes,
             position=index,
+            usda_fdc_id=line.usda_fdc_id,
+            gram_weight=line.gram_weight,
         )
         for index, line in enumerate(data.ingredients)
     ]

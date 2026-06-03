@@ -19,6 +19,8 @@ class RecipeIngredientInput:
     unit: str | None = None
     raw_text: str | None = None
     notes: str | None = None
+    usda_fdc_id: int | None = None
+    gram_weight: Decimal | None = None
 
 
 @dataclass

@@ -54,6 +54,44 @@ def test_link_then_macros(client):
     assert macros["lines"][0]["resolved"] is True
 
 
+def test_update_preserves_usda_links(client):
+    _seed_onion(client)
+    recipe = _create_recipe(client)
+    position = recipe["ingredients"][0]["position"]
+
+    linked = client.post(
+        f"/recipes/{recipe['id']}/ingredients/{position}/link",
+        json={"fdc_id": 170000, "gram_weight": "200"},
+    ).json()
+    line = linked["ingredients"][0]
+    assert line["usda_fdc_id"] == 170000
+
+    put = client.put(
+        f"/recipes/{recipe['id']}",
+        json={
+            "title": "Onion soup",
+            "servings": 2,
+            "ingredients": [
+                {
+                    "name": line["name"],
+                    "quantity": line["quantity"],
+                    "unit": line["unit"],
+                    "usda_fdc_id": line["usda_fdc_id"],
+                    "gram_weight": line["gram_weight"],
+                }
+            ],
+        },
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["ingredients"][0]["usda_fdc_id"] == 170000
+    assert Decimal(put.json()["ingredients"][0]["gram_weight"]) == Decimal("200")
+
+    macros = client.get(f"/recipes/{recipe['id']}/macros").json()
+    assert Decimal(macros["totals"]["calories"]) == Decimal("80")
+    assert Decimal(macros["totals"]["protein"]) == Decimal("2.2")
+    assert macros["unresolved_count"] == 0
+
+
 def test_macros_unresolved_when_not_linked(client):
     recipe = _create_recipe(client)
     macros = client.get(f"/recipes/{recipe['id']}/macros").json()

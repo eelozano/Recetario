@@ -156,6 +156,10 @@ export interface components {
             raw_text?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Usda Fdc Id */
+            usda_fdc_id?: number | null;
+            /** Gram Weight */
+            gram_weight?: number | string | null;
         };
         /** IngredientLineOut */
         IngredientLineOut: {

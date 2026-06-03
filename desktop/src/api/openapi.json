@@ -549,6 +549,32 @@
               }
             ],
             "title": "Notes"
+          },
+          "usda_fdc_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usda Fdc Id"
+          },
+          "gram_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gram Weight"
           }
         },
         "type": "object",

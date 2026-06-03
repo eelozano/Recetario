@@ -19,6 +19,8 @@ class IngredientLineIn(BaseModel):
     unit: str | None = None
     raw_text: str | None = None
     notes: str | None = None
+    usda_fdc_id: int | None = None
+    gram_weight: Decimal | None = None
 
 
 class RecipeCreate(BaseModel):
@@ -50,6 +52,8 @@ class RecipeCreate(BaseModel):
                     unit=line.unit,
                     raw_text=line.raw_text,
                     notes=line.notes,
+                    usda_fdc_id=line.usda_fdc_id,
+                    gram_weight=line.gram_weight,
                 )
                 for line in self.ingredients
             ],

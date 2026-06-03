@@ -181,7 +181,7 @@ export interface components {
         };
         /**
          * IngestionInputType
-         * @description How the source should be fetched. Only WEB is wired in this slice.
+         * @description How the source should be fetched: a web page (scraper) or a video (captions).
          * @enum {string}
          */
         IngestionInputType: "web" | "video";
@@ -189,9 +189,11 @@ export interface components {
         IngestionJobCreate: {
             /**
              * Url
-             * @description Recipe page URL to import.
+             * @description Recipe page or video URL to import.
              */
             url: string;
+            /** @description Force 'web' or 'video' handling; auto-detected from the URL when omitted. */
+            input_type?: components["schemas"]["IngestionInputType"] | null;
         };
         /** IngestionJobOut */
         IngestionJobOut: {

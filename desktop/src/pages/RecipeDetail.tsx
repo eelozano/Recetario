@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type MacroBreakdown, type RecipeOut } from "../api/client";
+import type { paths } from "../api/schema";
 import {
   formatAmount,
   formatQuantity,
@@ -9,20 +10,57 @@ import {
 } from "../api/format";
 
 type IngredientLine = RecipeOut["ingredients"][number];
+type RecipeUpdateBody = NonNullable<
+  paths["/recipes/{recipe_id}"]["put"]["requestBody"]
+>["content"]["application/json"];
+
+/** Round-trip a loaded recipe back into the PUT body, applying field overrides. */
+function toUpdateBody(
+  recipe: RecipeOut,
+  overrides: Partial<RecipeUpdateBody> = {},
+): RecipeUpdateBody {
+  return {
+    title: recipe.title,
+    description: recipe.description,
+    source_url: recipe.source_url,
+    source_type: recipe.source_type,
+    servings: recipe.servings,
+    rating: recipe.rating,
+    status: recipe.status,
+    instructions_md: recipe.instructions_md,
+    ingredients: recipe.ingredients.map((l) => ({
+      name: l.name,
+      quantity: l.quantity,
+      unit: l.unit,
+      raw_text: l.raw_text,
+      notes: l.notes,
+      usda_fdc_id: l.usda_fdc_id,
+      gram_weight: l.gram_weight,
+    })),
+    tags: recipe.tags.map((t) => t.name),
+    ...overrides,
+  };
+}
 
 interface Props {
   recipeId: number;
+  /** Notify the parent when the recipe changes (e.g. finalized) to refresh lists. */
+  onChanged?: () => void;
 }
 
 /**
  * Recipe detail + the ingredient-level macro breakdown — the diagnostic view
- * that shows exactly which ingredient drives each macro.
+ * that shows exactly which ingredient drives each macro. For imported drafts it
+ * also offers the review → finalize step.
  */
-export function RecipeDetail({ recipeId }: Props) {
+export function RecipeDetail({ recipeId, onChanged }: Props) {
   const [recipe, setRecipe] = useState<RecipeOut | null>(null);
   const [macros, setMacros] = useState<MacroBreakdown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Bumped after a mutation (finalize) to reload this view in place.
+  const [version, setVersion] = useState(0);
+  const [finalizing, setFinalizing] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -46,14 +84,32 @@ export function RecipeDetail({ recipeId }: Props) {
     return () => {
       active = false;
     };
-  }, [recipeId]);
+  }, [recipeId, version]);
+
+  async function finalize() {
+    if (!recipe || finalizing) return;
+    setFinalizing(true);
+    setError(null);
+    const { error: apiError } = await api.PUT("/recipes/{recipe_id}", {
+      params: { path: { recipe_id: recipe.id } },
+      body: toUpdateBody(recipe, { status: "finalized" }),
+    });
+    setFinalizing(false);
+    if (apiError) {
+      setError("Could not finalize this recipe.");
+      return;
+    }
+    setVersion((v) => v + 1);
+    onChanged?.();
+  }
 
   if (loading) return <p className="muted">Loading…</p>;
-  if (error) return <p className="error">{error}</p>;
+  if (error && !recipe) return <p className="error">{error}</p>;
   if (!recipe || !macros) return null;
 
   // Columns come from whichever macros the recipe actually accumulated.
   const columns = orderedMacroKeys(Object.keys(macros.totals));
+  const isDraft = recipe.status === "draft";
 
   return (
     <div className="detail">
@@ -62,6 +118,11 @@ export function RecipeDetail({ recipeId }: Props) {
         <div className="detail__meta">
           <span className={`pill pill--${recipe.status}`}>{recipe.status}</span>
           {recipe.servings != null && <span className="muted">{recipe.servings} servings</span>}
+          {recipe.source_url && (
+            <a className="detail__source" href={recipe.source_url} target="_blank" rel="noreferrer">
+              source ↗
+            </a>
+          )}
           {macros.unresolved_count > 0 && (
             <span className="pill pill--warn">
               {macros.unresolved_count} ingredient
@@ -71,6 +132,23 @@ export function RecipeDetail({ recipeId }: Props) {
         </div>
         {recipe.description && <p className="detail__desc">{recipe.description}</p>}
       </header>
+
+      {isDraft && (
+        <div className="draft-banner">
+          <div>
+            <strong>Imported draft</strong>
+            <p className="muted">
+              Review the ingredients and directions below
+              {macros.unresolved_count > 0 && ", link any unmatched ingredients,"} then
+              finalize to add it to your collection.
+            </p>
+            {error && <p className="error">{error}</p>}
+          </div>
+          <button className="btn btn--accent" onClick={finalize} disabled={finalizing}>
+            {finalizing ? "Finalizing…" : "Finalize recipe"}
+          </button>
+        </div>
+      )}
 
       <SummaryCards macros={macros} columns={columns} />
 

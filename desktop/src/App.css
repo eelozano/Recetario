@@ -308,6 +308,121 @@ body {
 .error {
   color: var(--bad);
 }
+
+/* ---- Buttons ---- */
+.btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0c1322;
+}
+
+/* ---- Import-from-URL box ---- */
+.import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.import__label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.import__row {
+  display: flex;
+  gap: 8px;
+}
+.import__input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.import__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.import__status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.import__ok {
+  color: var(--good);
+  font-size: 13px;
+  margin: 0;
+}
+.import__error {
+  font-size: 13px;
+  margin: 0;
+}
+
+.progress {
+  height: 6px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress__bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* ---- Draft review banner ---- */
+.draft-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0 4px;
+  padding: 14px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--warn);
+  border-radius: 10px;
+}
+.draft-banner p {
+  margin: 4px 0 0;
+  max-width: 60ch;
+}
+.draft-banner strong {
+  color: var(--warn);
+}
+.detail__source {
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+.detail__source:hover {
+  text-decoration: underline;
+}
 code {
   background: var(--panel-2);
   padding: 1px 5px;

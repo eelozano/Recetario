@@ -23,3 +23,7 @@ export type RecipeOut =
 export type MacroBreakdown =
   paths["/recipes/{recipe_id}/macros"]["get"]["responses"]["200"]["content"]["application/json"];
 export type LineMacro = MacroBreakdown["lines"][number];
+
+// Ingestion (recipe import) job, as polled by the Import-from-URL UI.
+export type IngestionJob =
+  paths["/ingestion/jobs/{job_id}"]["get"]["responses"]["200"]["content"]["application/json"];

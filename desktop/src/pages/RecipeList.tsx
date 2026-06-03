@@ -4,10 +4,12 @@ import { api, type RecipeSummary } from "../api/client";
 interface Props {
   onSelect: (recipeId: number) => void;
   selectedId: number | null;
+  /** Bump to force a reload (e.g. after an import or finalize). */
+  reloadKey?: number;
 }
 
 /** Left-hand list of recipes. Clicking one opens its macro breakdown. */
-export function RecipeList({ onSelect, selectedId }: Props) {
+export function RecipeList({ onSelect, selectedId, reloadKey }: Props) {
   const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,13 +21,16 @@ export function RecipeList({ onSelect, selectedId }: Props) {
       const { data, error } = await api.GET("/recipes", { params: { query: {} } });
       if (!active) return;
       if (error) setError("Could not load recipes");
-      else setRecipes(data ?? []);
+      else {
+        setError(null);
+        setRecipes(data ?? []);
+      }
       setLoading(false);
     })();
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   if (loading) return <p className="muted">Loading recipes…</p>;
   if (error) return <p className="error">{error}</p>;

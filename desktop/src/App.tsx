@@ -1,11 +1,15 @@
 import { useState } from "react";
 import "./App.css";
 import { HealthBadge } from "./components/HealthBadge";
+import { ImportRecipe } from "./components/ImportRecipe";
 import { RecipeList } from "./pages/RecipeList";
 import { RecipeDetail } from "./pages/RecipeDetail";
 
 function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Bumped whenever the recipe set changes (import, finalize) to reload the list.
+  const [listVersion, setListVersion] = useState(0);
+  const refreshList = () => setListVersion((v) => v + 1);
 
   return (
     <div className="app">
@@ -14,18 +18,29 @@ function App() {
           <h1 className="brand__name">Recetario</h1>
           <HealthBadge />
         </div>
-        <RecipeList onSelect={setSelectedId} selectedId={selectedId} />
+        <ImportRecipe
+          onImported={(id) => {
+            refreshList();
+            setSelectedId(id);
+          }}
+        />
+        <RecipeList
+          onSelect={setSelectedId}
+          selectedId={selectedId}
+          reloadKey={listVersion}
+        />
       </aside>
       <main className="main">
         {selectedId == null ? (
           <div className="empty">
             <h2>Select a recipe</h2>
             <p className="muted">
-              Pick a recipe on the left to see its ingredient-level macro breakdown.
+              Paste a recipe page or video link above to import one, or pick a recipe
+              on the left to see its ingredient-level macro breakdown.
             </p>
           </div>
         ) : (
-          <RecipeDetail recipeId={selectedId} />
+          <RecipeDetail recipeId={selectedId} onChanged={refreshList} />
         )}
       </main>
     </div>

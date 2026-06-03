@@ -13,7 +13,10 @@ __pycache__/
 .env
 .recetario/
 
-# Node / Tauri (added in later phases)
+# Node / Tauri
 node_modules/
 desktop/src-tauri/target/
 dist/
+
+# Claude Code local (machine-specific) settings
+.claude/settings.local.json

@@ -27,3 +27,11 @@ export type LineMacro = MacroBreakdown["lines"][number];
 // Ingestion (recipe import) job, as polled by the Import-from-URL UI.
 export type IngestionJob =
   paths["/ingestion/jobs/{job_id}"]["get"]["responses"]["200"]["content"]["application/json"];
+
+// Meal calendar (Phase 4): a week's plan plus its macro rollups.
+export type WeekPlan =
+  paths["/meals"]["get"]["responses"]["200"]["content"]["application/json"];
+export type MealEvent = WeekPlan["events"][number];
+export type MealEventCreate =
+  paths["/meals"]["post"]["requestBody"]["content"]["application/json"];
+export type MealType = MealEvent["meal_type"];

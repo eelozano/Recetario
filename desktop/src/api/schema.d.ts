@@ -161,10 +161,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/meals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Week Plan */
+        get: operations["week_plan_meals_get"];
+        put?: never;
+        /** Schedule Meal */
+        post: operations["schedule_meal_meals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/meals/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Meal */
+        get: operations["get_meal_meals__event_id__get"];
+        /** Update Meal */
+        put: operations["update_meal_meals__event_id__put"];
+        post?: never;
+        /** Delete Meal */
+        delete: operations["delete_meal_meals__event_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** DayMacrosOut */
+        DayMacrosOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Totals */
+            totals: {
+                [key: string]: string;
+            };
+        };
         /** FoodSummaryOut */
         FoodSummaryOut: {
             /** Fdc Id */
@@ -302,6 +351,48 @@ export interface components {
             /** Lines */
             lines: components["schemas"]["LineMacroOut"][];
         };
+        /** MealEventCreate */
+        MealEventCreate: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            meal_type: components["schemas"]["MealType"];
+            /** Recipe Id */
+            recipe_id: number;
+            /**
+             * Servings Planned
+             * @default 1
+             */
+            servings_planned: number | string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** MealEventOut */
+        MealEventOut: {
+            /** Id */
+            id: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            meal_type: components["schemas"]["MealType"];
+            /** Recipe Id */
+            recipe_id: number;
+            /** Recipe Title */
+            recipe_title: string | null;
+            /** Servings Planned */
+            servings_planned: string;
+            /** Notes */
+            notes: string | null;
+        };
+        /**
+         * MealType
+         * @enum {string}
+         */
+        MealType: "breakfast" | "lunch" | "dinner" | "snack";
         /** RecipeCreate */
         RecipeCreate: {
             /** Title */
@@ -391,6 +482,35 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WeekMacrosOut */
+        WeekMacrosOut: {
+            /** Days */
+            days: components["schemas"]["DayMacrosOut"][];
+            /** Totals */
+            totals: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * WeekPlanOut
+         * @description Everything the calendar needs for a date range in one response:
+         *     the scheduled events plus the per-day and whole-range macro rollups.
+         */
+        WeekPlanOut: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Events */
+            events: components["schemas"]["MealEventOut"][];
+            macros: components["schemas"]["WeekMacrosOut"];
         };
     };
     responses: never;
@@ -774,6 +894,166 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IngestionJobOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    week_plan_meals_get: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeekPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_meal_meals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MealEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MealEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meal_meals__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MealEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_meal_meals__event_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MealEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MealEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_meal_meals__event_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

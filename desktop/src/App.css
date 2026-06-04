@@ -429,3 +429,216 @@ code {
   border-radius: 4px;
   font-size: 12px;
 }
+
+/* ---- Sidebar nav (Recipes / Calendar) ---- */
+.nav {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.nav__item {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nav__item:hover {
+  color: var(--text);
+}
+.nav__item.is-active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.sidebar__hint {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---- Week calendar ---- */
+.calendar__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.calendar__nav {
+  display: flex;
+  gap: 6px;
+}
+.calendar__title {
+  font-size: 20px;
+  margin: 0;
+}
+.calendar__totals {
+  margin-left: auto;
+  font-size: 14px;
+}
+.calendar__totals strong {
+  font-size: 18px;
+}
+
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.day {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 320px;
+}
+.day--today {
+  border-color: var(--accent);
+}
+.day__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 2px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.day__name {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.day__num {
+  font-size: 16px;
+  font-weight: 700;
+}
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.slot__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.slot__label:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.slot__plus {
+  font-size: 13px;
+  font-weight: 700;
+}
+.meal-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.meal-chip__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meal-chip__servings {
+  color: var(--muted);
+  font-size: 11px;
+}
+.meal-chip__remove {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.meal-chip__remove:hover {
+  color: var(--bad);
+}
+.day__total {
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---- Modal (add-meal dialog) ---- */
+.modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modal__title {
+  font-size: 17px;
+  margin: 0;
+}
+.modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.modal__field select,
+.modal__field input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 400;
+}
+.modal__field select:focus,
+.modal__field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}

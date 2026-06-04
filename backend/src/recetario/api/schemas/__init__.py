@@ -19,10 +19,18 @@ from recetario.api.schemas.recipe import (
     RecipeSummary,
     TagOut,
 )
+from recetario.api.schemas.shopping import (
+    GenerateShoppingListRequest,
+    ShoppingItemOut,
+    ShoppingListOut,
+    ShoppingListSummary,
+    ToggleItemRequest,
+)
 
 __all__ = [
     "DayMacrosOut",
     "FoodSummaryOut",
+    "GenerateShoppingListRequest",
     "IngestionJobCreate",
     "IngestionJobOut",
     "IngredientLineOut",
@@ -34,7 +42,11 @@ __all__ = [
     "RecipeCreate",
     "RecipeOut",
     "RecipeSummary",
+    "ShoppingItemOut",
+    "ShoppingListOut",
+    "ShoppingListSummary",
     "TagOut",
+    "ToggleItemRequest",
     "WeekMacrosOut",
     "WeekPlanOut",
 ]

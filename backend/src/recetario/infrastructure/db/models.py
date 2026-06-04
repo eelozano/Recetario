@@ -9,6 +9,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
+    Boolean,
     Date,
     ForeignKey,
     Index,
@@ -123,6 +125,45 @@ class MealEventModel(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     recipe: Mapped[RecipeModel] = relationship(lazy="joined")
+
+
+class ShoppingListModel(TimestampMixin, Base):
+    """A week's aggregated grocery list (Phase 5). Persisted so check-off state
+    and Google Tasks export ids (Phase 6) survive across sessions."""
+
+    __tablename__ = "shopping_lists"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(255))
+    week_start: Mapped[Date] = mapped_column(Date)
+    week_end: Mapped[Date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+
+    items: Mapped[list["ShoppingListItemModel"]] = relationship(
+        back_populates="shopping_list",
+        cascade="all, delete-orphan",
+        order_by="ShoppingListItemModel.id",
+    )
+
+
+class ShoppingListItemModel(TimestampMixin, Base):
+    __tablename__ = "shopping_list_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shopping_list_id: Mapped[int] = mapped_column(
+        ForeignKey("shopping_lists.id", ondelete="CASCADE")
+    )
+    # Denormalized name (+ optional catalog id) so the list renders without a join.
+    ingredient_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ingredient_name: Mapped[str] = mapped_column(String(255))
+    unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    total_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    external_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_event_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    shopping_list: Mapped[ShoppingListModel] = relationship(back_populates="items")
 
 
 # --- USDA FoodData Central cache (Phase 2) -----------------------------------

@@ -29,6 +29,13 @@ from recetario.application.use_cases.nutrition import (
     LinkRecipeIngredientToUsda,
     SearchCachedFoods,
 )
+from recetario.application.use_cases.shopping import (
+    DeleteShoppingList,
+    GenerateWeeklyShoppingList,
+    GetShoppingList,
+    ListShoppingLists,
+    ToggleShoppingItem,
+)
 from recetario.application.use_cases.recipes import (
     CreateRecipe,
     DeleteRecipe,
@@ -38,11 +45,13 @@ from recetario.application.use_cases.recipes import (
 )
 from recetario.domain.services.macro_calculator import MacroCalculator
 from recetario.domain.services.meal_planner import MealPlanAggregator
+from recetario.domain.services.shopping_aggregator import ShoppingAggregator
 from recetario.infrastructure.db.repositories import (
     SqlAlchemyIngestionJobRepository,
     SqlAlchemyMealEventRepository,
     SqlAlchemyNutritionRepository,
     SqlAlchemyRecipeRepository,
+    SqlAlchemyShoppingListRepository,
     SqlAlchemyTagRepository,
 )
 
@@ -80,6 +89,12 @@ def get_meal_repository(
     session: Session = Depends(get_session),
 ) -> SqlAlchemyMealEventRepository:
     return SqlAlchemyMealEventRepository(session)
+
+
+def get_shopping_repository(
+    session: Session = Depends(get_session),
+) -> SqlAlchemyShoppingListRepository:
+    return SqlAlchemyShoppingListRepository(session)
 
 
 def create_recipe_uc(repo: SqlAlchemyRecipeRepository = Depends(get_recipe_repository)):
@@ -162,6 +177,38 @@ def week_macros_uc(
     return CalculateWeekMacros(
         meals, recipes, nutrition, MacroCalculator(), MealPlanAggregator()
     )
+
+
+def generate_shopping_uc(
+    lists: SqlAlchemyShoppingListRepository = Depends(get_shopping_repository),
+    meals: SqlAlchemyMealEventRepository = Depends(get_meal_repository),
+    recipes: SqlAlchemyRecipeRepository = Depends(get_recipe_repository),
+) -> GenerateWeeklyShoppingList:
+    return GenerateWeeklyShoppingList(lists, meals, recipes, ShoppingAggregator())
+
+
+def get_shopping_uc(
+    lists: SqlAlchemyShoppingListRepository = Depends(get_shopping_repository),
+) -> GetShoppingList:
+    return GetShoppingList(lists)
+
+
+def list_shopping_uc(
+    lists: SqlAlchemyShoppingListRepository = Depends(get_shopping_repository),
+) -> ListShoppingLists:
+    return ListShoppingLists(lists)
+
+
+def delete_shopping_uc(
+    lists: SqlAlchemyShoppingListRepository = Depends(get_shopping_repository),
+) -> DeleteShoppingList:
+    return DeleteShoppingList(lists)
+
+
+def toggle_item_uc(
+    lists: SqlAlchemyShoppingListRepository = Depends(get_shopping_repository),
+) -> ToggleShoppingItem:
+    return ToggleShoppingItem(lists)
 
 
 def start_ingestion_uc(

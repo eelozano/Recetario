@@ -12,6 +12,11 @@ from recetario.domain.entities.recipe import (
     SourceType,
     Tag,
 )
+from recetario.domain.entities.shopping import (
+    ShoppingList,
+    ShoppingListItem,
+    ShoppingListStatus,
+)
 
 __all__ = [
     "Ingredient",
@@ -23,6 +28,9 @@ __all__ = [
     "Recipe",
     "RecipeIngredient",
     "RecipeStatus",
+    "ShoppingList",
+    "ShoppingListItem",
+    "ShoppingListStatus",
     "SourceType",
     "Tag",
 ]

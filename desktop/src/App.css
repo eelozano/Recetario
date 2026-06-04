@@ -642,3 +642,69 @@ code {
   gap: 8px;
   margin-top: 4px;
 }
+
+/* ---- Shopping list ---- */
+.shop-gen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.shop-gen__week {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.shop-gen__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.shop-gen__nav {
+  padding: 4px 10px;
+}
+
+.shop-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.shop-detail__header h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+}
+
+.shop-items {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 60ch;
+}
+.shop-item {
+  border-bottom: 1px solid var(--border);
+}
+.shop-item__label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  cursor: pointer;
+  font-size: 15px;
+}
+.shop-item__label input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.shop-item.is-checked .shop-item__label span {
+  color: var(--muted);
+  text-decoration: line-through;
+}

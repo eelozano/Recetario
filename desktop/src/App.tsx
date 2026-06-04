@@ -5,12 +5,14 @@ import { ImportRecipe } from "./components/ImportRecipe";
 import { RecipeList } from "./pages/RecipeList";
 import { RecipeDetail } from "./pages/RecipeDetail";
 import { WeekCalendar } from "./pages/WeekCalendar";
+import { ShoppingSidebar, ShoppingListDetail } from "./pages/ShoppingLists";
 
-type View = "recipes" | "calendar";
+type View = "recipes" | "calendar" | "shopping";
 
 function App() {
   const [view, setView] = useState<View>("recipes");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedShoppingId, setSelectedShoppingId] = useState<number | null>(null);
   // Bumped whenever the recipe set changes (import, finalize) to reload the list
   // and the calendar's recipe picker.
   const [listVersion, setListVersion] = useState(0);
@@ -37,6 +39,12 @@ function App() {
           >
             Calendar
           </button>
+          <button
+            className={`nav__item ${view === "shopping" ? "is-active" : ""}`}
+            onClick={() => setView("shopping")}
+          >
+            Shopping
+          </button>
         </nav>
 
         {view === "recipes" && (
@@ -60,10 +68,40 @@ function App() {
             recipe's macros.
           </p>
         )}
+        {view === "shopping" && (
+          <ShoppingSidebar
+            onSelect={setSelectedShoppingId}
+            selectedId={selectedShoppingId}
+            reloadKey={listVersion}
+            onGenerated={(id) => {
+              refreshList();
+              setSelectedShoppingId(id);
+            }}
+          />
+        )}
       </aside>
       <main className="main">
         {view === "calendar" ? (
           <WeekCalendar reloadKey={listVersion} />
+        ) : view === "shopping" ? (
+          selectedShoppingId == null ? (
+            <div className="empty">
+              <h2>Shopping lists</h2>
+              <p className="muted">
+                Generate a list from a planned week on the left, then check items off as
+                you shop. Quantities are summed across every meal in the week.
+              </p>
+            </div>
+          ) : (
+            <ShoppingListDetail
+              listId={selectedShoppingId}
+              onChanged={refreshList}
+              onDeleted={() => {
+                refreshList();
+                setSelectedShoppingId(null);
+              }}
+            />
+          )
         ) : selectedId == null ? (
           <div className="empty">
             <h2>Select a recipe</h2>

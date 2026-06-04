@@ -198,6 +198,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shopping-lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Shopping Lists */
+        get: operations["list_shopping_lists_shopping_lists_get"];
+        put?: never;
+        /** Generate Shopping List */
+        post: operations["generate_shopping_list_shopping_lists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shopping-lists/{list_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Shopping List */
+        get: operations["get_shopping_list_shopping_lists__list_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Shopping List */
+        delete: operations["delete_shopping_list_shopping_lists__list_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shopping-lists/{list_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Toggle Item */
+        patch: operations["toggle_item_shopping_lists__list_id__items__item_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -222,6 +275,21 @@ export interface components {
             description: string;
             /** Data Type */
             data_type?: string | null;
+        };
+        /** GenerateShoppingListRequest */
+        GenerateShoppingListRequest: {
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+            /**
+             * Week End
+             * Format: date
+             */
+            week_end: string;
+            /** Name */
+            name?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -458,6 +526,77 @@ export interface components {
             /** Tags */
             tags: string[];
         };
+        /** ShoppingItemOut */
+        ShoppingItemOut: {
+            /** Id */
+            id: number;
+            /** Ingredient Id */
+            ingredient_id: number | null;
+            /** Ingredient Name */
+            ingredient_name: string;
+            /** Unit */
+            unit: string | null;
+            /** Total Quantity */
+            total_quantity: string | null;
+            /** Checked */
+            checked: boolean;
+            /** Source Event Ids */
+            source_event_ids: number[];
+        };
+        /** ShoppingListOut */
+        ShoppingListOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+            /**
+             * Week End
+             * Format: date
+             */
+            week_end: string;
+            status: components["schemas"]["ShoppingListStatus"];
+            /** Generated At */
+            generated_at: string | null;
+            /** Items */
+            items: components["schemas"]["ShoppingItemOut"][];
+        };
+        /**
+         * ShoppingListStatus
+         * @enum {string}
+         */
+        ShoppingListStatus: "draft" | "exported";
+        /**
+         * ShoppingListSummary
+         * @description Lightweight list-view row: counts instead of the full item set.
+         */
+        ShoppingListSummary: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+            /**
+             * Week End
+             * Format: date
+             */
+            week_end: string;
+            status: components["schemas"]["ShoppingListStatus"];
+            /** Generated At */
+            generated_at: string | null;
+            /** Item Count */
+            item_count: number;
+            /** Checked Count */
+            checked_count: number;
+        };
         /**
          * SourceType
          * @enum {string}
@@ -469,6 +608,11 @@ export interface components {
             id?: number | null;
             /** Name */
             name: string;
+        };
+        /** ToggleItemRequest */
+        ToggleItemRequest: {
+            /** Checked */
+            checked: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -1054,6 +1198,155 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shopping_lists_shopping_lists_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShoppingListSummary"][];
+                };
+            };
+        };
+    };
+    generate_shopping_list_shopping_lists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateShoppingListRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShoppingListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shopping_list_shopping_lists__list_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShoppingListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_shopping_list_shopping_lists__list_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toggle_item_shopping_lists__list_id__items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToggleItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShoppingItemOut"];
+                };
             };
             /** @description Validation Error */
             422: {

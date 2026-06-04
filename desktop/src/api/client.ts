@@ -35,3 +35,10 @@ export type MealEvent = WeekPlan["events"][number];
 export type MealEventCreate =
   paths["/meals"]["post"]["requestBody"]["content"]["application/json"];
 export type MealType = MealEvent["meal_type"];
+
+// Shopping lists (Phase 5).
+export type ShoppingListSummary =
+  paths["/shopping-lists"]["get"]["responses"]["200"]["content"]["application/json"][number];
+export type ShoppingList =
+  paths["/shopping-lists/{list_id}"]["get"]["responses"]["200"]["content"]["application/json"];
+export type ShoppingItem = ShoppingList["items"][number];

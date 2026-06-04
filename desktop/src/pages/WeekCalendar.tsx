@@ -7,6 +7,7 @@ import {
   type WeekPlan,
 } from "../api/client";
 import { formatAmount, formatQuantity, macroUnit } from "../api/format";
+import { addDays, isoDate, startOfWeek } from "../api/week";
 
 const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
 const MEAL_LABEL: Record<MealType, string> = {
@@ -16,27 +17,6 @@ const MEAL_LABEL: Record<MealType, string> = {
   snack: "Snack",
 };
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-/** Local YYYY-MM-DD (avoids the UTC shift of toISOString). */
-function isoDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
-}
-
-/** Monday of the week containing `d`. */
-function startOfWeek(d: Date): Date {
-  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dow = (out.getDay() + 6) % 7; // 0 = Monday
-  out.setDate(out.getDate() - dow);
-  return out;
-}
-
-function addDays(d: Date, n: number): Date {
-  const out = new Date(d);
-  out.setDate(out.getDate() + n);
-  return out;
-}
 
 interface Props {
   /** Bump to force a reload (e.g. after a recipe is finalized elsewhere). */

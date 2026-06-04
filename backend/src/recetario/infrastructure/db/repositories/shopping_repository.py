@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from recetario.domain.entities import ShoppingList, ShoppingListItem, ShoppingListStatus
+from recetario.identity import DEFAULT_OWNER_ID
 from recetario.infrastructure.db.models import ShoppingListItemModel, ShoppingListModel
 
 
@@ -42,11 +43,13 @@ def _to_domain(model: ShoppingListModel) -> ShoppingList:
 
 
 class SqlAlchemyShoppingListRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, owner_id: int = DEFAULT_OWNER_ID) -> None:
         self._session = session
+        self._owner_id = owner_id
 
     def add(self, shopping_list: ShoppingList) -> ShoppingList:
         model = ShoppingListModel(
+            owner_id=self._owner_id,
             name=shopping_list.name,
             week_start=shopping_list.week_start,
             week_end=shopping_list.week_end,
@@ -72,7 +75,10 @@ class SqlAlchemyShoppingListRepository:
     def _load(self, list_id: int) -> ShoppingListModel | None:
         return self._session.scalar(
             select(ShoppingListModel)
-            .where(ShoppingListModel.id == list_id)
+            .where(
+                ShoppingListModel.id == list_id,
+                ShoppingListModel.owner_id == self._owner_id,
+            )
             .options(selectinload(ShoppingListModel.items))
         )
 
@@ -83,13 +89,14 @@ class SqlAlchemyShoppingListRepository:
     def list(self) -> list[ShoppingList]:
         stmt = (
             select(ShoppingListModel)
+            .where(ShoppingListModel.owner_id == self._owner_id)
             .options(selectinload(ShoppingListModel.items))
             .order_by(ShoppingListModel.created_at.desc())
         )
         return [_to_domain(m) for m in self._session.scalars(stmt)]
 
     def delete(self, list_id: int) -> bool:
-        model = self._session.get(ShoppingListModel, list_id)
+        model = self._load(list_id)  # owner-scoped
         if model is None:
             return False
         self._session.delete(model)
@@ -120,7 +127,16 @@ class SqlAlchemyShoppingListRepository:
         return _to_domain(model)
 
     def set_item_checked(self, item_id: int, checked: bool) -> ShoppingListItem | None:
-        model = self._session.get(ShoppingListItemModel, item_id)
+        # Scope through the parent list's owner so you can't toggle another
+        # owner's item by guessing its id.
+        model = self._session.scalar(
+            select(ShoppingListItemModel)
+            .join(ShoppingListModel)
+            .where(
+                ShoppingListItemModel.id == item_id,
+                ShoppingListModel.owner_id == self._owner_id,
+            )
+        )
         if model is None:
             return None
         model.checked = checked

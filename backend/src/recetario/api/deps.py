@@ -12,6 +12,7 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
 from recetario.application.ports import TaskExporter
+from recetario.identity import DEFAULT_OWNER_ID
 from recetario.application.use_cases.export import ConnectGoogleTasks, ExportShoppingListToTasks
 from recetario.application.use_cases.ingestion import (
     GetIngestionJob,
@@ -67,8 +68,23 @@ def get_session(request: Request) -> Iterator[Session]:
         session.close()
 
 
-def get_recipe_repository(session: Session = Depends(get_session)) -> SqlAlchemyRecipeRepository:
-    return SqlAlchemyRecipeRepository(session)
+def get_owner_id(request: Request) -> int:
+    """Resolve the owner the current request acts on.
+
+    Single-user today: every request is the implicit default owner. This is the
+    one and only place that knowledge lives — when real auth arrives, resolve the
+    authenticated principal here (from a header/session/token) and the entire
+    stack becomes multi-tenant with no other changes. An override on app.state
+    lets tests exercise a second owner.
+    """
+    return getattr(request.app.state, "owner_id", DEFAULT_OWNER_ID)
+
+
+def get_recipe_repository(
+    session: Session = Depends(get_session),
+    owner_id: int = Depends(get_owner_id),
+) -> SqlAlchemyRecipeRepository:
+    return SqlAlchemyRecipeRepository(session, owner_id=owner_id)
 
 
 def get_tag_repository(session: Session = Depends(get_session)) -> SqlAlchemyTagRepository:
@@ -89,14 +105,16 @@ def get_ingestion_repository(
 
 def get_meal_repository(
     session: Session = Depends(get_session),
+    owner_id: int = Depends(get_owner_id),
 ) -> SqlAlchemyMealEventRepository:
-    return SqlAlchemyMealEventRepository(session)
+    return SqlAlchemyMealEventRepository(session, owner_id=owner_id)
 
 
 def get_shopping_repository(
     session: Session = Depends(get_session),
+    owner_id: int = Depends(get_owner_id),
 ) -> SqlAlchemyShoppingListRepository:
-    return SqlAlchemyShoppingListRepository(session)
+    return SqlAlchemyShoppingListRepository(session, owner_id=owner_id)
 
 
 def create_recipe_uc(repo: SqlAlchemyRecipeRepository = Depends(get_recipe_repository)):

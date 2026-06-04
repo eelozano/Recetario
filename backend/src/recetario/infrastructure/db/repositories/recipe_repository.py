@@ -17,6 +17,7 @@ from recetario.domain.entities import (
     SourceType,
     Tag,
 )
+from recetario.identity import DEFAULT_OWNER_ID
 from recetario.infrastructure.db.models import (
     IngredientModel,
     RecipeIngredientModel,
@@ -67,8 +68,9 @@ def _recipe_to_domain(model: RecipeModel) -> Recipe:
 
 
 class SqlAlchemyRecipeRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, owner_id: int = DEFAULT_OWNER_ID) -> None:
         self._session = session
+        self._owner_id = owner_id
 
     def _get_or_create_ingredient(self, ingredient: Ingredient) -> IngredientModel:
         existing = self._session.scalar(
@@ -121,7 +123,7 @@ class SqlAlchemyRecipeRepository:
         model.tags = [self._get_or_create_tag(t.name) for t in recipe.tags]
 
     def add(self, recipe: Recipe) -> Recipe:
-        model = RecipeModel()
+        model = RecipeModel(owner_id=self._owner_id)
         self._apply(model, recipe)
         self._session.add(model)
         self._session.commit()
@@ -131,7 +133,7 @@ class SqlAlchemyRecipeRepository:
     def _load(self, recipe_id: int) -> RecipeModel | None:
         return self._session.scalar(
             select(RecipeModel)
-            .where(RecipeModel.id == recipe_id)
+            .where(RecipeModel.id == recipe_id, RecipeModel.owner_id == self._owner_id)
             .options(selectinload(RecipeModel.ingredients), selectinload(RecipeModel.tags))
         )
 
@@ -142,6 +144,7 @@ class SqlAlchemyRecipeRepository:
     def list(self, *, tag: str | None = None, search: str | None = None) -> list[Recipe]:
         stmt = (
             select(RecipeModel)
+            .where(RecipeModel.owner_id == self._owner_id)
             .options(selectinload(RecipeModel.ingredients), selectinload(RecipeModel.tags))
             .order_by(RecipeModel.created_at.desc())
         )
@@ -162,7 +165,7 @@ class SqlAlchemyRecipeRepository:
         return _recipe_to_domain(model)
 
     def delete(self, recipe_id: int) -> bool:
-        model = self._session.get(RecipeModel, recipe_id)
+        model = self._load(recipe_id)  # owner-scoped
         if model is None:
             return False
         self._session.delete(model)

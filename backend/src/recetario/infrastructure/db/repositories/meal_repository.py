@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from recetario.domain.entities import MealEvent, MealType
+from recetario.identity import DEFAULT_OWNER_ID
 from recetario.infrastructure.db.models import MealEventModel
 
 
@@ -31,8 +32,9 @@ def _to_domain(model: MealEventModel) -> MealEvent:
 
 
 class SqlAlchemyMealEventRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, owner_id: int = DEFAULT_OWNER_ID) -> None:
         self._session = session
+        self._owner_id = owner_id
 
     def _apply(self, model: MealEventModel, event: MealEvent) -> None:
         model.date = event.date
@@ -41,8 +43,16 @@ class SqlAlchemyMealEventRepository:
         model.servings_planned = event.servings_planned
         model.notes = event.notes
 
+    def _get(self, event_id: int) -> MealEventModel | None:
+        return self._session.scalar(
+            select(MealEventModel).where(
+                MealEventModel.id == event_id,
+                MealEventModel.owner_id == self._owner_id,
+            )
+        )
+
     def add(self, event: MealEvent) -> MealEvent:
-        model = MealEventModel()
+        model = MealEventModel(owner_id=self._owner_id)
         self._apply(model, event)
         self._session.add(model)
         self._session.commit()
@@ -50,20 +60,24 @@ class SqlAlchemyMealEventRepository:
         return _to_domain(model)
 
     def get(self, event_id: int) -> MealEvent | None:
-        model = self._session.get(MealEventModel, event_id)
+        model = self._get(event_id)
         return _to_domain(model) if model else None
 
     def list_range(self, start: Date, end: Date) -> list[MealEvent]:
         stmt = (
             select(MealEventModel)
-            .where(MealEventModel.date >= start, MealEventModel.date <= end)
+            .where(
+                MealEventModel.owner_id == self._owner_id,
+                MealEventModel.date >= start,
+                MealEventModel.date <= end,
+            )
             .order_by(MealEventModel.date, MealEventModel.id)
         )
         return [_to_domain(m) for m in self._session.scalars(stmt)]
 
     def update(self, event: MealEvent) -> MealEvent | None:
         assert event.id is not None
-        model = self._session.get(MealEventModel, event.id)
+        model = self._get(event.id)
         if model is None:
             return None
         self._apply(model, event)
@@ -72,7 +86,7 @@ class SqlAlchemyMealEventRepository:
         return _to_domain(model)
 
     def delete(self, event_id: int) -> bool:
-        model = self._session.get(MealEventModel, event_id)
+        model = self._get(event_id)
         if model is None:
             return False
         self._session.delete(model)

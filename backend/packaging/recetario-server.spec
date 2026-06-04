@@ -41,6 +41,12 @@ hiddenimports += collect_submodules("uvicorn")
 #    so an awkward/namespace package never breaks the whole build.
 for pkg in (
     "recipe_scrapers",   # URL recipe import
+    # mf2py is a *transitive* dep (recipe_scrapers → extruct → mf2py). It loads
+    # its backcompat-rules/*.json at import time (module-level, resolved via
+    # __file__), so the frozen binary crashes the moment recipe_scrapers reaches
+    # it unless that data dir is bundled. collect_all is per-package, not
+    # transitive, hence the explicit entry. See issue #1.
+    "mf2py",
     "anthropic",         # LLM enrichment
     "googleapiclient",   # Google Tasks export
     "google.auth",

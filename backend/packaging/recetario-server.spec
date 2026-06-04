@@ -9,9 +9,11 @@ Build:
     cd backend
     .venv/bin/pyinstaller packaging/recetario-server.spec --noconfirm
 
-`yt_dlp` (video ingestion) is intentionally excluded to keep the binary lean; it
-is a lazy import, so the rest of the app runs fine without it — only importing a
-recipe from a *video* URL would be unavailable in the packaged build.
+All optional features are bundled, including `yt_dlp` (video ingestion). It and
+its transitive deps add ~9 MB (the 1k+ extractor modules compress well in the
+PYZ), which is a fair price for "import from a video URL" working in the shipped
+app. Note: extracting audio for ASR fallback would still require a system ffmpeg;
+the captions-first path does not.
 """
 
 import os
@@ -45,6 +47,7 @@ for pkg in (
     "google.oauth2",
     "google_auth_oauthlib",
     "cryptography",      # encrypted token store
+    "yt_dlp",            # video-URL recipe ingestion (captions)
 ):
     try:
         d, b, h = collect_all(pkg)
@@ -62,7 +65,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["yt_dlp", "tkinter", "pytest", "IPython"],
+    excludes=["tkinter", "pytest", "IPython"],
     noarchive=False,
 )
 

@@ -67,6 +67,11 @@ Recetario/
   desktop/           Tauri + React + TypeScript shell and UI
 ```
 
+## Contributing
+
+Development follows **GitHub Flow** — branch per change, PR linked to its issue, squash-merge to
+`main`. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full working agreement.
+
 ## Configuration & secrets
 
 The backend is configured via `RECETARIO_*` environment variables (or a `backend/.env` file). All

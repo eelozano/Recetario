@@ -42,3 +42,7 @@ export type ShoppingListSummary =
 export type ShoppingList =
   paths["/shopping-lists/{list_id}"]["get"]["responses"]["200"]["content"]["application/json"];
 export type ShoppingItem = ShoppingList["items"][number];
+
+// Google Tasks integration (Phase 6).
+export type IntegrationStatus =
+  paths["/integrations/google-tasks"]["get"]["responses"]["200"]["content"]["application/json"];

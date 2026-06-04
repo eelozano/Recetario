@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  type IntegrationStatus,
   type ShoppingItem,
   type ShoppingList,
   type ShoppingListSummary,
@@ -123,11 +124,15 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
   const [list, setList] = useState<ShoppingList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [gtask, setGtask] = useState<IntegrationStatus | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
+      setExportNote(null);
       const { data, error: apiError } = await api.GET("/shopping-lists/{list_id}", {
         params: { path: { list_id: listId } },
       });
@@ -143,6 +148,53 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
       active = false;
     };
   }, [listId]);
+
+  // Google Tasks connection status (drives the export button's label/availability).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await api.GET("/integrations/google-tasks", { params: {} });
+      if (active && data) setGtask(data);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [listId]);
+
+  async function exportToTasks() {
+    if (!list || exporting) return;
+    setExporting(true);
+    setExportNote(null);
+    setError(null);
+
+    // First-time: run the OAuth consent (opens a browser on this machine).
+    if (gtask && !gtask.connected) {
+      setExportNote("Authorize Recetario in the browser window that just opened…");
+      const { data, error: connectError } = await api.POST(
+        "/integrations/google-tasks/connect",
+        { params: {} },
+      );
+      if (connectError || !data?.connected) {
+        setExporting(false);
+        setExportNote(null);
+        setError("Could not connect to Google Tasks.");
+        return;
+      }
+      setGtask(data);
+    }
+
+    const { data, error: apiError } = await api.POST("/shopping-lists/{list_id}/export", {
+      params: { path: { list_id: list.id } },
+    });
+    setExporting(false);
+    if (apiError || !data) {
+      setError("Export failed. Please try again.");
+      return;
+    }
+    setList(data);
+    setExportNote(`Exported ${data.items.length} items to Google Tasks ✓`);
+    onChanged();
+  }
 
   async function toggle(item: ShoppingItem) {
     if (!list) return;
@@ -181,6 +233,15 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
   const checked = list.items.filter((i) => i.checked).length;
   const total = list.items.length;
   const pct = total ? Math.round((checked / total) * 100) : 0;
+  const exported = list.status === "exported";
+  const canExport = total > 0 && gtask?.client_configured !== false;
+  const exportLabel = exporting
+    ? "Exporting…"
+    : gtask && !gtask.connected
+      ? "Connect Google Tasks & export"
+      : exported
+        ? "Re-export to Google Tasks"
+        : "Export to Google Tasks";
 
   return (
     <div className="shop-detail">
@@ -189,12 +250,35 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
           <h1>{list.name}</h1>
           <p className="detail__meta muted">
             {rangeLabel(list.week_start, list.week_end)} · {checked}/{total} checked
+            {exported && <span className="pill pill--finalized">exported</span>}
           </p>
         </div>
-        <button className="btn" onClick={remove} title="Delete this list">
-          Delete
-        </button>
+        <div className="shop-detail__actions">
+          <button
+            className="btn btn--accent"
+            onClick={exportToTasks}
+            disabled={!canExport || exporting}
+            title={
+              gtask?.client_configured === false
+                ? "Add your Google client-secret JSON to ~/.recetario to enable export"
+                : "Send this list to Google Tasks"
+            }
+          >
+            {exportLabel}
+          </button>
+          <button className="btn" onClick={remove} title="Delete this list">
+            Delete
+          </button>
+        </div>
       </header>
+
+      {gtask?.client_configured === false && (
+        <p className="muted shop-detail__hint">
+          To enable Google Tasks export, drop your OAuth client-secret JSON at{" "}
+          <code>~/.recetario/google_client_secret.json</code>.
+        </p>
+      )}
+      {exportNote && <p className="import__ok">{exportNote}</p>}
 
       {total > 0 && (
         <div className="progress">

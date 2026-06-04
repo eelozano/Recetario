@@ -234,6 +234,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shopping-lists/{list_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Shopping List */
+        post: operations["export_shopping_list_shopping_lists__list_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/shopping-lists/{list_id}/items/{item_id}": {
         parameters: {
             query?: never;
@@ -249,6 +266,40 @@ export interface paths {
         head?: never;
         /** Toggle Item */
         patch: operations["toggle_item_shopping_lists__list_id__items__item_id__patch"];
+        trace?: never;
+    };
+    "/integrations/google-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Google Tasks Status */
+        get: operations["google_tasks_status_integrations_google_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations/google-tasks/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Google Tasks Connect */
+        post: operations["google_tasks_connect_integrations_google_tasks_connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -371,6 +422,15 @@ export interface components {
             usda_fdc_id?: number | null;
             /** Gram Weight */
             gram_weight?: string | null;
+        };
+        /** IntegrationStatusOut */
+        IntegrationStatusOut: {
+            /** Provider */
+            provider: string;
+            /** Connected */
+            connected: boolean;
+            /** Client Configured */
+            client_configured: boolean;
         };
         /**
          * JobStatus
@@ -542,6 +602,8 @@ export interface components {
             checked: boolean;
             /** Source Event Ids */
             source_event_ids: number[];
+            /** External Task Id */
+            external_task_id: string | null;
         };
         /** ShoppingListOut */
         ShoppingListOut: {
@@ -562,6 +624,8 @@ export interface components {
             status: components["schemas"]["ShoppingListStatus"];
             /** Generated At */
             generated_at: string | null;
+            /** External Tasklist Id */
+            external_tasklist_id: string | null;
             /** Items */
             items: components["schemas"]["ShoppingItemOut"][];
         };
@@ -1323,6 +1387,37 @@ export interface operations {
             };
         };
     };
+    export_shopping_list_shopping_lists__list_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShoppingListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     toggle_item_shopping_lists__list_id__items__item_id__patch: {
         parameters: {
             query?: never;
@@ -1355,6 +1450,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_tasks_status_integrations_google_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationStatusOut"];
+                };
+            };
+        };
+    };
+    google_tasks_connect_integrations_google_tasks_connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationStatusOut"];
                 };
             };
         };

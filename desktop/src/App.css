@@ -677,6 +677,18 @@ code {
   margin: 0 0 4px;
   font-size: 26px;
 }
+.shop-detail__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.shop-detail__hint {
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.shop-detail__header .detail__meta .pill {
+  margin-left: 8px;
+}
 
 .shop-items {
   list-style: none;

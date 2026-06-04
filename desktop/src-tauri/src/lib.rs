@@ -1,14 +1,68 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+//! Tauri shell for Recetario.
+//!
+//! On startup we launch the bundled Python backend (`recetario-server`) as a
+//! sidecar process. The React UI is "just another HTTP client" of that local
+//! API (127.0.0.1:8765), so the whole app ships as one double-clickable bundle:
+//! the sidecar self-migrates the user's SQLite DB and serves the API, the
+//! webview renders the UI. The child is tracked in app state and killed on exit
+//! so we never leak a backend process.
+
+use std::sync::Mutex;
+
+use tauri::{Manager, RunEvent};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
+
+/// Holds the running sidecar so we can terminate it when the app exits.
+struct Backend(Mutex<Option<CommandChild>>);
+
+fn spawn_backend(app: &tauri::AppHandle) -> Result<CommandChild, Box<dyn std::error::Error>> {
+    let (mut rx, child) = app.shell().sidecar("recetario-server")?.spawn()?;
+
+    // Drain the sidecar's stdout/stderr to the host console for debugging.
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) | CommandEvent::Stderr(line) => {
+                    eprint!("[recetario-server] {}", String::from_utf8_lossy(&line));
+                }
+                CommandEvent::Error(err) => {
+                    eprintln!("[recetario-server] error: {err}");
+                }
+                _ => {}
+            }
+        }
+    });
+
+    Ok(child)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .manage(Backend(Mutex::new(None)))
+        .setup(|app| {
+            let handle = app.handle().clone();
+            match spawn_backend(&handle) {
+                Ok(child) => {
+                    *app.state::<Backend>().0.lock().unwrap() = Some(child);
+                }
+                Err(err) => {
+                    eprintln!("Failed to start Recetario backend sidecar: {err}");
+                }
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // On exit, kill the sidecar so no orphaned backend keeps the port.
+            if let RunEvent::ExitRequested { .. } = event {
+                if let Some(child) = app_handle.state::<Backend>().0.lock().unwrap().take() {
+                    let _ = child.kill();
+                }
+            }
+        });
 }

@@ -18,5 +18,11 @@ node_modules/
 desktop/src-tauri/target/
 dist/
 
+# Build artifacts
+# PyInstaller working dir and the frozen sidecar binary (regenerated per-arch by
+# desktop/scripts/build-sidecar.sh — large and machine-specific, never committed).
+backend/build/
+desktop/src-tauri/binaries/
+
 # Claude Code local (machine-specific) settings
 .claude/settings.local.json

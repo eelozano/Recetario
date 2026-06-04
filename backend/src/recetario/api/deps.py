@@ -11,6 +11,8 @@ from collections.abc import Iterator
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from recetario.application.ports import TaskExporter
+from recetario.application.use_cases.export import ConnectGoogleTasks, ExportShoppingListToTasks
 from recetario.application.use_cases.ingestion import (
     GetIngestionJob,
     ListIngestionJobs,
@@ -209,6 +211,24 @@ def toggle_item_uc(
     lists: SqlAlchemyShoppingListRepository = Depends(get_shopping_repository),
 ) -> ToggleShoppingItem:
     return ToggleShoppingItem(lists)
+
+
+def get_task_exporter(
+    request: Request, session: Session = Depends(get_session)
+) -> TaskExporter:
+    # The factory lives on app.state so tests can swap in a fake (no Google/network).
+    return request.app.state.task_exporter_factory(session)
+
+
+def connect_google_uc(exporter: TaskExporter = Depends(get_task_exporter)) -> ConnectGoogleTasks:
+    return ConnectGoogleTasks(exporter)
+
+
+def export_shopping_uc(
+    lists: SqlAlchemyShoppingListRepository = Depends(get_shopping_repository),
+    exporter: TaskExporter = Depends(get_task_exporter),
+) -> ExportShoppingListToTasks:
+    return ExportShoppingListToTasks(lists, exporter)
 
 
 def start_ingestion_uc(

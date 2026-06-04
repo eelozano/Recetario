@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # cheaper/faster than Opus with no meaningful quality loss. Override per-env.
     anthropic_model: str = "claude-sonnet-4-6"
 
+    # Google Tasks export (Phase 6). The client-secret JSON is the OAuth "Desktop
+    # app" credential downloaded from Google Cloud; the key file holds the local
+    # Fernet key used to encrypt stored OAuth tokens at rest. Both default under
+    # ~/.recetario and are never committed.
+    google_client_secret_file: str = str(Path.home() / ".recetario" / "google_client_secret.json")
+    token_key_file: str = str(Path.home() / ".recetario" / "token.key")
+    google_tasks_scopes: str = "https://www.googleapis.com/auth/tasks"
+
     def ensure_sqlite_dir(self) -> None:
         if self.database_url.startswith("sqlite:///"):
             path = Path(self.database_url.removeprefix("sqlite:///"))

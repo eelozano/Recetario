@@ -34,6 +34,7 @@ def _to_domain(model: ShoppingListModel) -> ShoppingList:
         week_end=model.week_end,
         status=ShoppingListStatus(model.status),
         items=[_item_to_domain(i) for i in model.items],
+        external_tasklist_id=model.external_tasklist_id,
         generated_at=model.created_at,
         created_at=model.created_at,
         updated_at=model.updated_at,
@@ -94,6 +95,29 @@ class SqlAlchemyShoppingListRepository:
         self._session.delete(model)
         self._session.commit()
         return True
+
+    def apply_export(
+        self,
+        list_id: int,
+        *,
+        tasklist_id: str,
+        item_task_ids: dict[int, str],
+        status: ShoppingListStatus = ShoppingListStatus.EXPORTED,
+    ) -> ShoppingList | None:
+        """Persist the outcome of an export: the external tasklist id, per-item
+        external task ids, and the list's status."""
+        model = self._load(list_id)
+        if model is None:
+            return None
+        model.external_tasklist_id = tasklist_id
+        model.status = status.value
+        for item in model.items:
+            external = item_task_ids.get(item.id)
+            if external is not None:
+                item.external_task_id = external
+        self._session.commit()
+        self._session.refresh(model)
+        return _to_domain(model)
 
     def set_item_checked(self, item_id: int, checked: bool) -> ShoppingListItem | None:
         model = self._session.get(ShoppingListItemModel, item_id)

@@ -29,6 +29,7 @@ class ShoppingItemOut(BaseModel):
     total_quantity: Decimal | None
     checked: bool
     source_event_ids: list[int]
+    external_task_id: str | None
 
     @classmethod
     def from_domain(cls, item: ShoppingListItem) -> "ShoppingItemOut":
@@ -40,6 +41,7 @@ class ShoppingItemOut(BaseModel):
             total_quantity=item.total_quantity,
             checked=item.checked,
             source_event_ids=item.source_event_ids,
+            external_task_id=item.external_task_id,
         )
 
 
@@ -50,6 +52,7 @@ class ShoppingListOut(BaseModel):
     week_end: Date
     status: ShoppingListStatus
     generated_at: datetime | None
+    external_tasklist_id: str | None
     items: list[ShoppingItemOut]
 
     @classmethod
@@ -61,6 +64,7 @@ class ShoppingListOut(BaseModel):
             week_end=sl.week_end,
             status=sl.status,
             generated_at=sl.generated_at,
+            external_tasklist_id=sl.external_tasklist_id,
             items=[ShoppingItemOut.from_domain(i) for i in sl.items],
         )
 

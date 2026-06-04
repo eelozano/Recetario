@@ -1,3 +1,7 @@
+from recetario.infrastructure.db.repositories.credential_repository import (
+    SqlAlchemyCredentialRepository,
+    StoredCredential,
+)
 from recetario.infrastructure.db.repositories.ingestion_repository import (
     SqlAlchemyIngestionJobRepository,
 )
@@ -16,10 +20,12 @@ from recetario.infrastructure.db.repositories.shopping_repository import (
 )
 
 __all__ = [
+    "SqlAlchemyCredentialRepository",
     "SqlAlchemyIngestionJobRepository",
     "SqlAlchemyMealEventRepository",
     "SqlAlchemyNutritionRepository",
     "SqlAlchemyRecipeRepository",
     "SqlAlchemyShoppingListRepository",
     "SqlAlchemyTagRepository",
+    "StoredCredential",
 ]

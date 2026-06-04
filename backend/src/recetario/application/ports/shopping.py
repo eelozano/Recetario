@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from recetario.domain.entities import ShoppingList, ShoppingListItem
+from recetario.domain.entities import ShoppingList, ShoppingListItem, ShoppingListStatus
 
 
 class ShoppingListRepository(Protocol):
@@ -17,3 +17,12 @@ class ShoppingListRepository(Protocol):
     def delete(self, list_id: int) -> bool: ...
 
     def set_item_checked(self, item_id: int, checked: bool) -> ShoppingListItem | None: ...
+
+    def apply_export(
+        self,
+        list_id: int,
+        *,
+        tasklist_id: str,
+        item_task_ids: dict[int, str],
+        status: ShoppingListStatus = ShoppingListStatus.EXPORTED,
+    ) -> ShoppingList | None: ...

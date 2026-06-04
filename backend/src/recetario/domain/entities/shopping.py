@@ -43,6 +43,8 @@ class ShoppingList:
     status: ShoppingListStatus = ShoppingListStatus.DRAFT
     items: list[ShoppingListItem] = field(default_factory=list)
     id: int | None = None
+    # External task-list id (e.g. Google Tasks) for idempotent re-export (Phase 6).
+    external_tasklist_id: str | None = None
     generated_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

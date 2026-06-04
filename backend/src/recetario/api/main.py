@@ -7,8 +7,18 @@ from collections.abc import Callable
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from recetario.api.routers import health, ingestion, meals, nutrition, recipes, shopping
-from recetario.application.ports import LlmRecipeExtractor, NutritionProvider
+from sqlalchemy.orm import Session
+
+from recetario.api.routers import (
+    health,
+    ingestion,
+    integrations,
+    meals,
+    nutrition,
+    recipes,
+    shopping,
+)
+from recetario.application.ports import LlmRecipeExtractor, NutritionProvider, TaskExporter
 from recetario.infrastructure.config import Settings, get_settings
 from recetario.infrastructure.db.session import create_db_engine, create_session_factory
 from recetario.infrastructure.scraping import RecipeScrapersAdapter
@@ -47,6 +57,30 @@ def _make_provider_factory(
     return build
 
 
+def _make_task_exporter_factory(settings: Settings):
+    """Build a Google Tasks exporter per request, backed by the session's encrypted
+    credential store. The Fernet cipher is created lazily so tests that override
+    this factory never touch the on-disk key."""
+    scopes = settings.google_tasks_scopes.split()
+    cipher_box: list = []
+
+    def build(session: Session) -> TaskExporter:
+        from recetario.infrastructure.db.repositories import SqlAlchemyCredentialRepository
+        from recetario.infrastructure.export import GoogleTasksConnector
+        from recetario.infrastructure.security import TokenCipher
+
+        if not cipher_box:
+            cipher_box.append(TokenCipher(settings.token_key_file))
+        store = SqlAlchemyCredentialRepository(session, cipher_box[0])
+        return GoogleTasksConnector(
+            store,
+            client_secret_file=settings.google_client_secret_file,
+            scopes=scopes,
+        )
+
+    return build
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="Recetario API", version="0.1.0")
@@ -63,6 +97,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # their API key is absent; tests override them to exercise the path offline.
     app.state.extractor_factory = _make_extractor_factory(settings)
     app.state.nutrition_provider_factory = _make_provider_factory(settings)
+    # Google Tasks export (Phase 6); tests override with a fake exporter.
+    app.state.task_exporter_factory = _make_task_exporter_factory(settings)
 
     # The Tauri/web client is a separate origin during dev.
     app.add_middleware(
@@ -79,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ingestion.router)
     app.include_router(meals.router)
     app.include_router(shopping.router)
+    app.include_router(integrations.router)
     return app
 
 

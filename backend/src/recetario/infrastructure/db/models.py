@@ -6,12 +6,14 @@ shopping-list tables are added in later phases (see DESIGN.md §2).
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
     Boolean,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -139,6 +141,7 @@ class ShoppingListModel(TimestampMixin, Base):
     week_start: Mapped[Date] = mapped_column(Date)
     week_end: Mapped[Date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(16), default="draft")
+    external_tasklist_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     items: Mapped[list["ShoppingListItemModel"]] = relationship(
         back_populates="shopping_list",
@@ -164,6 +167,20 @@ class ShoppingListItemModel(TimestampMixin, Base):
     source_event_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     shopping_list: Mapped[ShoppingListModel] = relationship(back_populates="items")
+
+
+class OAuthCredentialModel(TimestampMixin, Base):
+    """Stored OAuth credentials for an external integration (Phase 6). The token
+    payload is encrypted at rest (see TokenCipher); scopes/expiry are kept in the
+    clear for display only."""
+
+    __tablename__ = "oauth_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), unique=True)
+    encrypted_data: Mapped[str] = mapped_column(Text)
+    scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # --- USDA FoodData Central cache (Phase 2) -----------------------------------

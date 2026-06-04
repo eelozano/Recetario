@@ -12,6 +12,8 @@ from recetario.api.schemas import (
     ShoppingListSummary,
     ToggleItemRequest,
 )
+from recetario.application.ports.export import ExportError, NotConnectedError
+from recetario.application.use_cases.export import ExportShoppingListToTasks
 from recetario.application.use_cases.shopping import (
     DeleteShoppingList,
     GenerateWeeklyShoppingList,
@@ -58,6 +60,24 @@ def delete_shopping_list(list_id: int, uc: DeleteShoppingList = Depends(deps.del
         uc(list_id)
     except ShoppingListNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
+
+
+@router.post("/{list_id}/export", response_model=ShoppingListOut)
+def export_shopping_list(
+    list_id: int,
+    uc: ExportShoppingListToTasks = Depends(deps.export_shopping_uc),
+):
+    try:
+        return ShoppingListOut.from_domain(uc(list_id))
+    except ShoppingListNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
+    except NotConnectedError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google Tasks is not connected. Connect the integration first.",
+        )
+    except ExportError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
 @router.patch("/{list_id}/items/{item_id}", response_model=ShoppingItemOut)

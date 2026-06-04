@@ -7,6 +7,7 @@ from recetario.application.ports.ingestion import (
     TranscriptError,
     VideoTranscriptFetcher,
 )
+from recetario.application.ports.meal import MealEventRepository
 from recetario.application.ports.nutrition import NutritionProvider, NutritionRepository
 from recetario.application.ports.repositories import RecipeRepository, TagRepository
 
@@ -14,6 +15,7 @@ __all__ = [
     "ExtractError",
     "IngestionJobRepository",
     "LlmRecipeExtractor",
+    "MealEventRepository",
     "NutritionProvider",
     "NutritionRepository",
     "RecipeRepository",

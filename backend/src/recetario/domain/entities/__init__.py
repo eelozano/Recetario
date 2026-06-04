@@ -3,6 +3,7 @@ from recetario.domain.entities.ingestion import (
     IngestionJob,
     JobStatus,
 )
+from recetario.domain.entities.meal import MealEvent, MealType
 from recetario.domain.entities.recipe import (
     Ingredient,
     Recipe,
@@ -17,6 +18,8 @@ __all__ = [
     "IngestionInputType",
     "IngestionJob",
     "JobStatus",
+    "MealEvent",
+    "MealType",
     "Recipe",
     "RecipeIngredient",
     "RecipeStatus",

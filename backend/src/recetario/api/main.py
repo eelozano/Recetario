@@ -7,7 +7,7 @@ from collections.abc import Callable
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from recetario.api.routers import health, ingestion, nutrition, recipes
+from recetario.api.routers import health, ingestion, meals, nutrition, recipes
 from recetario.application.ports import LlmRecipeExtractor, NutritionProvider
 from recetario.infrastructure.config import Settings, get_settings
 from recetario.infrastructure.db.session import create_db_engine, create_session_factory
@@ -77,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(recipes.tags_router)
     app.include_router(nutrition.router)
     app.include_router(ingestion.router)
+    app.include_router(meals.router)
     return app
 
 

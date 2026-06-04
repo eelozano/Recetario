@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.pool import StaticPool
 
 from recetario.api.main import create_app
@@ -19,6 +19,15 @@ def client() -> TestClient:
         poolclass=StaticPool,
         future=True,
     )
+
+    # Mirror production (see db/session.py): enforce foreign keys so ON DELETE
+    # CASCADE / SET NULL actually fire under SQLite.
+    @event.listens_for(engine, "connect")
+    def _fk_pragma(dbapi_conn, _record):  # noqa: ANN001
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(engine)
 
     app = create_app()

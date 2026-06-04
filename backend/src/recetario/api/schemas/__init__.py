@@ -1,4 +1,11 @@
 from recetario.api.schemas.ingestion import IngestionJobCreate, IngestionJobOut
+from recetario.api.schemas.meal import (
+    DayMacrosOut,
+    MealEventCreate,
+    MealEventOut,
+    WeekMacrosOut,
+    WeekPlanOut,
+)
 from recetario.api.schemas.nutrition import (
     FoodSummaryOut,
     LineMacroOut,
@@ -14,6 +21,7 @@ from recetario.api.schemas.recipe import (
 )
 
 __all__ = [
+    "DayMacrosOut",
     "FoodSummaryOut",
     "IngestionJobCreate",
     "IngestionJobOut",
@@ -21,8 +29,12 @@ __all__ = [
     "LineMacroOut",
     "LinkIngredientRequest",
     "MacroBreakdownOut",
+    "MealEventCreate",
+    "MealEventOut",
     "RecipeCreate",
     "RecipeOut",
     "RecipeSummary",
     "TagOut",
+    "WeekMacrosOut",
+    "WeekPlanOut",
 ]

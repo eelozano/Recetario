@@ -24,3 +24,7 @@ class MacroProfile:
         for nutrient, amount in other.amounts.items():
             merged[nutrient] = merged.get(nutrient, Decimal(0)) + amount
         return MacroProfile(merged)
+
+    def scale(self, factor: Decimal) -> MacroProfile:
+        """Multiply every nutrient amount by `factor` (e.g. servings planned)."""
+        return MacroProfile({nutrient: amount * factor for nutrient, amount in self.amounts.items()})

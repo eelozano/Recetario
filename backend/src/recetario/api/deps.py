@@ -16,6 +16,14 @@ from recetario.application.use_cases.ingestion import (
     ListIngestionJobs,
     StartUrlIngestion,
 )
+from recetario.application.use_cases.meal import (
+    CalculateWeekMacros,
+    DeleteMealEvent,
+    GetMealEvent,
+    ListWeek,
+    ScheduleMeal,
+    UpdateMealEvent,
+)
 from recetario.application.use_cases.nutrition import (
     CalculateRecipeMacros,
     LinkRecipeIngredientToUsda,
@@ -29,8 +37,10 @@ from recetario.application.use_cases.recipes import (
     UpdateRecipe,
 )
 from recetario.domain.services.macro_calculator import MacroCalculator
+from recetario.domain.services.meal_planner import MealPlanAggregator
 from recetario.infrastructure.db.repositories import (
     SqlAlchemyIngestionJobRepository,
+    SqlAlchemyMealEventRepository,
     SqlAlchemyNutritionRepository,
     SqlAlchemyRecipeRepository,
     SqlAlchemyTagRepository,
@@ -64,6 +74,12 @@ def get_ingestion_repository(
     session: Session = Depends(get_session),
 ) -> SqlAlchemyIngestionJobRepository:
     return SqlAlchemyIngestionJobRepository(session)
+
+
+def get_meal_repository(
+    session: Session = Depends(get_session),
+) -> SqlAlchemyMealEventRepository:
+    return SqlAlchemyMealEventRepository(session)
 
 
 def create_recipe_uc(repo: SqlAlchemyRecipeRepository = Depends(get_recipe_repository)):
@@ -104,6 +120,48 @@ def search_foods_uc(
     nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
 ) -> SearchCachedFoods:
     return SearchCachedFoods(nutrition)
+
+
+def schedule_meal_uc(
+    meals: SqlAlchemyMealEventRepository = Depends(get_meal_repository),
+    recipes: SqlAlchemyRecipeRepository = Depends(get_recipe_repository),
+) -> ScheduleMeal:
+    return ScheduleMeal(meals, recipes)
+
+
+def get_meal_uc(
+    meals: SqlAlchemyMealEventRepository = Depends(get_meal_repository),
+) -> GetMealEvent:
+    return GetMealEvent(meals)
+
+
+def list_week_uc(
+    meals: SqlAlchemyMealEventRepository = Depends(get_meal_repository),
+) -> ListWeek:
+    return ListWeek(meals)
+
+
+def update_meal_uc(
+    meals: SqlAlchemyMealEventRepository = Depends(get_meal_repository),
+    recipes: SqlAlchemyRecipeRepository = Depends(get_recipe_repository),
+) -> UpdateMealEvent:
+    return UpdateMealEvent(meals, recipes)
+
+
+def delete_meal_uc(
+    meals: SqlAlchemyMealEventRepository = Depends(get_meal_repository),
+) -> DeleteMealEvent:
+    return DeleteMealEvent(meals)
+
+
+def week_macros_uc(
+    meals: SqlAlchemyMealEventRepository = Depends(get_meal_repository),
+    recipes: SqlAlchemyRecipeRepository = Depends(get_recipe_repository),
+    nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
+) -> CalculateWeekMacros:
+    return CalculateWeekMacros(
+        meals, recipes, nutrition, MacroCalculator(), MealPlanAggregator()
+    )
 
 
 def start_ingestion_uc(

@@ -9,6 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from sqlalchemy import (
+    Date,
     ForeignKey,
     Index,
     Integer,
@@ -107,6 +108,23 @@ class IngestionJobModel(TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class MealEventModel(TimestampMixin, Base):
+    """A scheduled recipe in a meal slot on a date (Phase 4). A week's plan is a
+    date-range query over this table; no separate week entity."""
+
+    __tablename__ = "meal_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    date: Mapped[Date] = mapped_column(Date)
+    meal_type: Mapped[str] = mapped_column(String(16))
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"))
+    servings_planned: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal(1))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    recipe: Mapped[RecipeModel] = relationship(lazy="joined")
+
+
 # --- USDA FoodData Central cache (Phase 2) -----------------------------------
 # A local subset of FDC, populated by the seeder. Nutrient amounts are stored on
 # a per-100g basis (the FDC convention for SR Legacy / Foundation foods), which
@@ -166,6 +184,7 @@ class UsdaFoodPortionModel(TimestampMixin, Base):
 
 
 Index("ix_recipes_title", RecipeModel.title)
+Index("ix_meal_events_date", MealEventModel.date)
 Index("ix_usda_foods_description", UsdaFoodModel.description)
 Index(
     "ix_usda_food_nutrients_fdc_nutrient",

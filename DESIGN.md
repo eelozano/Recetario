@@ -233,8 +233,13 @@ data core first**, defer LLM/cloud integrations.
 - **Domain/application:** pure `pytest` unit tests, no DB — `MacroCalculator` (per-ingredient
   breakdown, per-100g→gram math), `ShoppingAggregator` (dedup/unit normalization). Fast; proves the
   decoupling.
-- **Infrastructure/repositories:** integration tests against in-memory SQLite; a CI job also runs
-  them against Postgres to guarantee the migration path.
+- **Infrastructure/repositories:** integration tests against in-memory SQLite by default. The whole
+  suite is **Postgres-portable on demand**: set `RECETARIO_TEST_DATABASE_URL` (e.g. a throwaway
+  `docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16`) and the same tests run
+  against Postgres instead — proving the SQLite→Postgres swap without imposing Postgres on everyday
+  runs. `tests/integration/test_postgres_migrations.py` additionally runs `alembic upgrade head` from
+  an empty database and asserts the full schema, validating the migration chain itself (not just
+  `create_all`). This is the seam a future CI job would flip on.
 - **API:** FastAPI `TestClient` covering each router; `curl`/HTTPie smoke checks against the running
   local server.
 - **Ingestion:** unit-test the parser with recorded HTML/transcript fixtures and a **mocked**

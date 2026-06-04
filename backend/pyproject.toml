@@ -23,6 +23,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    # Postgres driver — only used when RECETARIO_TEST_DATABASE_URL points the
+    # suite at Postgres to validate the SQLite→Postgres swap. The same driver is
+    # what a future hosted deployment would use at runtime.
+    "psycopg[binary]>=3.1",
 ]
 # Build-time only: freezes server.py into the single-file sidecar binary that
 # Tauri ships. Not needed at runtime. See packaging/recetario-server.spec.

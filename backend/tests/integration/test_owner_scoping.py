@@ -13,9 +13,8 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
 from recetario.domain.entities import (
     MealEvent,
@@ -24,7 +23,6 @@ from recetario.domain.entities import (
     ShoppingList,
     ShoppingListItem,
 )
-from recetario.infrastructure.db.base import Base
 from recetario.infrastructure.db.repositories import (
     SqlAlchemyMealEventRepository,
     SqlAlchemyRecipeRepository,
@@ -36,22 +34,11 @@ OWNER_B = 2
 
 
 @pytest.fixture
-def session() -> Session:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
-
-    @event.listens_for(engine, "connect")
-    def _fk_pragma(dbapi_conn, _record):  # noqa: ANN001
-        cur = dbapi_conn.cursor()
-        cur.execute("PRAGMA foreign_keys=ON")
-        cur.close()
-
-    Base.metadata.create_all(engine)
-    with Session(engine, future=True) as s:
+def session(db_engine: Engine) -> Session:
+    # `db_engine` (conftest) is SQLite by default, or the configured Postgres
+    # when RECETARIO_TEST_DATABASE_URL is set — so this scoping test validates on
+    # both backends.
+    with Session(db_engine, future=True) as s:
         yield s
 
 

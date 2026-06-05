@@ -81,6 +81,47 @@ A change is mergeable when it's actually been exercised, not just written:
   path that changed.
 - **UI** → `cd desktop && npm run build` (typecheck) and, when it matters, `npm run tauri dev`.
 
+## Continuous integration
+
+Every PR runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml): the backend `pytest` suite
+and the frontend typecheck/build. The green check is a *floor*, not the whole review — it proves
+nothing imported broke, but it can't see a packaging regression, a wrong macro number, or a UI
+that looks off. Treat CI as "the automatable half is handled, now verify the rest."
+
+## Reviewing a PR
+
+The PR is the review checkpoint — here's how to actually exercise one before merging.
+
+**1. Read the diff first.** The GitHub "Files changed" tab is the fast pass. For a small, obvious
+change (a CSS tweak, a copy fix) reading the diff *is* sufficient — no checkout needed.
+
+**2. Check it out when you want to run it.** `gh pr checkout <number>` puts the PR's exact code in
+your tree (start from a clean working tree). Then run only what the change could break:
+
+| The PR touches…                    | Verify with                                                            |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| Backend logic                      | `cd backend && .venv/bin/pytest`                                       |
+| A user-facing flow                 | + live smoke test against a **throwaway** DB (below)                   |
+| PyInstaller spec / `server.py`     | rebuild + boot the frozen binary; exercise the changed path           |
+| UI (React/TS)                      | `cd desktop && npm run build`, then `npm run tauri dev` to click it    |
+| Docs only                          | just read the rendered file                                            |
+
+**Live smoke test** (never against your real `~/.recetario/recetario.db`):
+
+```bash
+export RECETARIO_DATABASE_URL="sqlite:////tmp/pr_test.db"
+export RECETARIO_API_PORT=8801
+cd backend && .venv/bin/alembic upgrade head
+PYTHONPATH=src .venv/bin/python -m uvicorn recetario.api.main:app --port 8801
+# exercise the changed endpoint with curl; Ctrl-C and `rm /tmp/pr_test.db` when done
+```
+
+For a **full end-to-end** check, run the backend on `/tmp/pr_test.db` and `npm run tauri dev`
+against it in a second terminal — you drive the real UI without touching your recipe library.
+
+**3. Get back cleanly.** `git checkout main && git pull`; `git branch -d <branch>` tidies up the
+local PR branch after merge.
+
 ## Never commit
 
 These stay local — they're gitignored, keep them that way:

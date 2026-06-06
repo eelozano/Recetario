@@ -9,7 +9,7 @@ import pytest
 from recetario.application.ports import ExtractError
 from recetario.domain.entities import IngestionInputType, RecipeStatus, SourceType
 from recetario.application.use_cases.ingestion import detect_input_type
-from recetario.infrastructure.llm import recipe_from_transcript
+from recetario.infrastructure.llm import recipe_from_transcript, recipe_from_web
 
 
 @pytest.mark.parametrize(
@@ -83,3 +83,30 @@ def test_recipe_from_transcript_raises_when_no_ingredients():
     payload = {"title": "Not a recipe", "servings": None, "ingredients": [], "steps": []}
     with pytest.raises(ExtractError):
         recipe_from_transcript(payload, source_url=None)
+
+
+def test_recipe_from_web_builds_web_draft():
+    # The web fallback shares the extraction schema but tags the draft as WEB.
+    payload = {
+        "title": "Garlic Soup",
+        "servings": 4,
+        "ingredients": [
+            {"name": "garlic", "quantity": 2, "unit": "clove", "raw_text": "2 cloves garlic"},
+        ],
+        "steps": ["Boil.", "Serve."],
+    }
+    draft = recipe_from_web(payload, source_url="https://example.com/soup")
+
+    assert draft.title == "Garlic Soup"
+    assert draft.servings == 4
+    assert draft.source_type is SourceType.WEB
+    assert draft.status is RecipeStatus.DRAFT
+    assert draft.source_url == "https://example.com/soup"
+    assert draft.instructions_md == "Boil.\nServe."
+    assert draft.ingredients[0].quantity == Decimal("2")
+
+
+def test_recipe_from_web_raises_when_no_ingredients():
+    payload = {"title": "A blog post", "servings": None, "ingredients": [], "steps": []}
+    with pytest.raises(ExtractError):
+        recipe_from_web(payload, source_url="https://example.com/blog")

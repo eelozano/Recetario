@@ -3,6 +3,7 @@ from recetario.infrastructure.llm.recipe_extractor import (
     apply_structured,
     parse_resolved,
     recipe_from_transcript,
+    recipe_from_web,
 )
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "apply_structured",
     "parse_resolved",
     "recipe_from_transcript",
+    "recipe_from_web",
 ]

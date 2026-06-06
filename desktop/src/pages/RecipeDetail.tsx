@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, type MacroBreakdown, type RecipeOut } from "../api/client";
 import type { paths } from "../api/schema";
 import {
@@ -119,7 +120,17 @@ export function RecipeDetail({ recipeId, onChanged }: Props) {
           <span className={`pill pill--${recipe.status}`}>{recipe.status}</span>
           {recipe.servings != null && <span className="muted">{recipe.servings} servings</span>}
           {recipe.source_url && (
-            <a className="detail__source" href={recipe.source_url} target="_blank" rel="noreferrer">
+            // In the Tauri webview a plain target="_blank" link is a no-op — the
+            // shell intercepts navigation. Hand the URL to the system browser via
+            // the opener plugin. The href is kept for hover/right-click affordance.
+            <a
+              className="detail__source"
+              href={recipe.source_url}
+              onClick={(e) => {
+                e.preventDefault();
+                void openUrl(recipe.source_url!);
+              }}
+            >
               source ↗
             </a>
           )}
@@ -150,19 +161,19 @@ export function RecipeDetail({ recipeId, onChanged }: Props) {
         </div>
       )}
 
-      <SummaryCards macros={macros} columns={columns} />
-
+      {/* Primary cooking content first; macros are secondary planning info, so
+          the totals cards and the per-ingredient breakdown are grouped below. */}
       <IngredientList ingredients={recipe.ingredients} />
 
       <Directions instructionsMd={recipe.instructions_md} />
+
+      <SummaryCards macros={macros} columns={columns} />
 
       <section>
         <h2 className="section-title">Per-ingredient breakdown</h2>
         {columns.length === 0 ? (
           <p className="muted">
-            No macros yet — link ingredients to USDA foods (POST
-            <code> /recipes/{recipe.id}/ingredients/&#123;position&#125;/link</code>) to populate
-            this view.
+            No macros yet — link ingredients to USDA foods to populate this view.
           </p>
         ) : (
           <table className="macro-table">

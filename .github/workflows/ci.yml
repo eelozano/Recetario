@@ -1,0 +1,61 @@
+name: CI
+
+# Runs on every PR into main (the review gate) and on pushes to main (keeps the
+# trunk green). The backend suite is hermetic — in-memory SQLite, mocked
+# LLM/FDC/Google — so no secrets or services are needed.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A newer push to the same branch/PR cancels the in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend (with dev extras)
+        run: pip install -e '.[dev]'
+
+      - name: Run tests
+        run: pytest
+
+  frontend:
+    name: Frontend typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run build` is `tsc && vite build` — catches type errors and a broken
+      # build. The Rust/Tauri shell is not built here (no native toolchain needed
+      # to validate the web UI); packaging is verified manually before release.
+      - name: Typecheck and build UI
+        run: npm run build

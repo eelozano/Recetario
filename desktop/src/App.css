@@ -295,6 +295,8 @@ body {
   border-radius: 6px;
   padding: 1px 6px;
   color: var(--muted);
+  /* Keep multi-word badges (e.g. "not linked") on a single line. */
+  white-space: nowrap;
 }
 .tag--warn {
   margin-left: 8px;

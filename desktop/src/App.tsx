@@ -6,8 +6,9 @@ import { RecipeList } from "./pages/RecipeList";
 import { RecipeDetail } from "./pages/RecipeDetail";
 import { WeekCalendar } from "./pages/WeekCalendar";
 import { ShoppingSidebar, ShoppingListDetail } from "./pages/ShoppingLists";
+import { Settings } from "./pages/Settings";
 
-type View = "recipes" | "calendar" | "shopping";
+type View = "recipes" | "calendar" | "shopping" | "settings";
 
 function App() {
   const [view, setView] = useState<View>("recipes");
@@ -45,6 +46,12 @@ function App() {
           >
             Shopping
           </button>
+          <button
+            className={`nav__item ${view === "settings" ? "is-active" : ""}`}
+            onClick={() => setView("settings")}
+          >
+            Settings
+          </button>
         </nav>
 
         {view === "recipes" && (
@@ -81,7 +88,9 @@ function App() {
         )}
       </aside>
       <main className="main">
-        {view === "calendar" ? (
+        {view === "settings" ? (
+          <Settings />
+        ) : view === "calendar" ? (
           <WeekCalendar reloadKey={listVersion} />
         ) : view === "shopping" ? (
           selectedShoppingId == null ? (

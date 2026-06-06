@@ -137,6 +137,17 @@ body {
   text-align: center;
 }
 
+.detail__titlebar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.detail__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .detail__header h1 {
   margin: 0 0 8px;
   font-size: 28px;
@@ -333,6 +344,11 @@ body {
 .btn--accent {
   background: var(--accent);
   border-color: var(--accent);
+  color: #0c1322;
+}
+.btn--danger {
+  background: var(--bad);
+  border-color: var(--bad);
   color: #0c1322;
 }
 

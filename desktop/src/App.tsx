@@ -111,7 +111,14 @@ function App() {
             </p>
           </div>
         ) : (
-          <RecipeDetail recipeId={selectedId} onChanged={refreshList} />
+          <RecipeDetail
+            recipeId={selectedId}
+            onChanged={refreshList}
+            onDeleted={() => {
+              refreshList();
+              setSelectedId(null);
+            }}
+          />
         )}
       </main>
     </div>

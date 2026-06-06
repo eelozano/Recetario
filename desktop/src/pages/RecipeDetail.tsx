@@ -47,6 +47,8 @@ interface Props {
   recipeId: number;
   /** Notify the parent when the recipe changes (e.g. finalized) to refresh lists. */
   onChanged?: () => void;
+  /** Notify the parent after this recipe is deleted, so it can clear the selection. */
+  onDeleted?: () => void;
 }
 
 /**
@@ -54,7 +56,7 @@ interface Props {
  * that shows exactly which ingredient drives each macro. For imported drafts it
  * also offers the review → finalize step.
  */
-export function RecipeDetail({ recipeId, onChanged }: Props) {
+export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
   const [recipe, setRecipe] = useState<RecipeOut | null>(null);
   const [macros, setMacros] = useState<MacroBreakdown | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +64,13 @@ export function RecipeDetail({ recipeId, onChanged }: Props) {
   // Bumped after a mutation (finalize) to reload this view in place.
   const [version, setVersion] = useState(0);
   const [finalizing, setFinalizing] = useState(false);
+  // Two-step delete confirmation (window.confirm is unreliable in the webview).
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setConfirmingDelete(false);
     (async () => {
       setLoading(true);
       setError(null);
@@ -104,6 +110,22 @@ export function RecipeDetail({ recipeId, onChanged }: Props) {
     onChanged?.();
   }
 
+  async function remove() {
+    if (!recipe || deleting) return;
+    setDeleting(true);
+    setError(null);
+    const { error: apiError } = await api.DELETE("/recipes/{recipe_id}", {
+      params: { path: { recipe_id: recipe.id } },
+    });
+    if (apiError) {
+      setDeleting(false);
+      setConfirmingDelete(false);
+      setError("Could not delete this recipe.");
+      return;
+    }
+    onDeleted?.();
+  }
+
   if (loading) return <p className="muted">Loading…</p>;
   if (error && !recipe) return <p className="error">{error}</p>;
   if (!recipe || !macros) return null;
@@ -115,7 +137,34 @@ export function RecipeDetail({ recipeId, onChanged }: Props) {
   return (
     <div className="detail">
       <header className="detail__header">
-        <h1>{recipe.title}</h1>
+        <div className="detail__titlebar">
+          <h1>{recipe.title}</h1>
+          <div className="detail__actions">
+            {confirmingDelete ? (
+              <>
+                <button className="btn btn--danger" onClick={remove} disabled={deleting}>
+                  {deleting ? "Deleting…" : "Confirm delete"}
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                className="btn"
+                onClick={() => setConfirmingDelete(true)}
+                title="Delete this recipe"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+        {error && recipe && <p className="error">{error}</p>}
         <div className="detail__meta">
           <span className={`pill pill--${recipe.status}`}>{recipe.status}</span>
           {recipe.servings != null && <span className="muted">{recipe.servings} servings</span>}
@@ -153,7 +202,6 @@ export function RecipeDetail({ recipeId, onChanged }: Props) {
               {macros.unresolved_count > 0 && ", link any unmatched ingredients,"} then
               finalize to add it to your collection.
             </p>
-            {error && <p className="error">{error}</p>}
           </div>
           <button className="btn btn--accent" onClick={finalize} disabled={finalizing}>
             {finalizing ? "Finalizing…" : "Finalize recipe"}

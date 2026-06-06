@@ -20,6 +20,11 @@ from recetario.api.schemas.recipe import (
     RecipeSummary,
     TagOut,
 )
+from recetario.api.schemas.settings import (
+    SecretStatus,
+    SettingsStatusOut,
+    SettingsUpdateIn,
+)
 from recetario.api.schemas.shopping import (
     GenerateShoppingListRequest,
     ShoppingItemOut,
@@ -44,6 +49,9 @@ __all__ = [
     "RecipeCreate",
     "RecipeOut",
     "RecipeSummary",
+    "SecretStatus",
+    "SettingsStatusOut",
+    "SettingsUpdateIn",
     "ShoppingItemOut",
     "ShoppingListOut",
     "ShoppingListSummary",

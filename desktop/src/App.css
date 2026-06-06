@@ -898,3 +898,100 @@ code {
   color: var(--muted);
   text-decoration: line-through;
 }
+
+/* ---- Settings (bring-your-own keys) ---- */
+.settings {
+  max-width: 60ch;
+}
+.settings h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+.settings__intro {
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+.settings__saved {
+  color: var(--good);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.settings__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settings__label {
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings__badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.settings__badge--ok {
+  color: var(--good);
+  border-color: var(--good);
+}
+.settings__help {
+  font-size: 13px;
+  margin: 0;
+}
+.settings__input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings__input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.settings__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.settings__link {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+.settings__link:hover {
+  text-decoration: underline;
+}
+.settings__actions {
+  display: flex;
+  justify-content: flex-end;
+}

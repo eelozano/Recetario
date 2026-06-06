@@ -50,3 +50,10 @@ export type ShoppingItem = ShoppingList["items"][number];
 // Google Tasks integration (Phase 6).
 export type IntegrationStatus =
   paths["/integrations/google-tasks"]["get"]["responses"]["200"]["content"]["application/json"];
+
+// Settings (bring-your-own API keys). The status never carries raw keys — only
+// whether each is configured plus a masked hint.
+export type SettingsStatus =
+  paths["/settings"]["get"]["responses"]["200"]["content"]["application/json"];
+export type SettingsUpdate =
+  paths["/settings"]["put"]["requestBody"]["content"]["application/json"];

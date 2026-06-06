@@ -6,11 +6,25 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_DEFAULT_DB = Path.home() / ".recetario" / "recetario.db"
+_CONFIG_DIR = Path.home() / ".recetario"
+_DEFAULT_DB = _CONFIG_DIR / "recetario.db"
+# The user config file the Settings panel writes to. It lives next to the DB —
+# outside the repo and outside the app bundle — so each install (yours, a
+# friend's) supplies its own keys.
+_CONFIG_ENV_FILE = _CONFIG_DIR / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="RECETARIO_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="RECETARIO_",
+        # Order matters: later files win. A dev-tree `.env` (CWD-relative) first,
+        # then ~/.recetario/.env — the packaged app's only source of keys (its
+        # CWD is `/`, not backend/, so a relative `.env` is never found) and
+        # where the in-app Settings panel saves. A key saved in the app thus
+        # always wins over a stale checkout value.
+        env_file=(".env", str(_CONFIG_ENV_FILE)),
+        extra="ignore",
+    )
 
     # Swap to e.g. "postgresql+psycopg://user:pass@host/db" for the cloud migration.
     database_url: str = f"sqlite:///{_DEFAULT_DB}"
@@ -36,6 +50,11 @@ class Settings(BaseSettings):
     google_client_secret_file: str = str(Path.home() / ".recetario" / "google_client_secret.json")
     token_key_file: str = str(Path.home() / ".recetario" / "token.key")
     google_tasks_scopes: str = "https://www.googleapis.com/auth/tasks"
+
+    # Where the in-app Settings panel persists user-entered keys. Same file this
+    # Settings object reads on boot (see env_file above), so a save is picked up
+    # on the next read with no separate config path to keep in sync.
+    config_env_file: str = str(_CONFIG_ENV_FILE)
 
     def ensure_sqlite_dir(self) -> None:
         if self.database_url.startswith("sqlite:///"):

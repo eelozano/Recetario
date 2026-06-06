@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy.orm import Session
 
+from recetario.api.factories import make_extractor_factory, make_provider_factory
 from recetario.api.routers import (
     health,
     ingestion,
@@ -16,45 +15,15 @@ from recetario.api.routers import (
     meals,
     nutrition,
     recipes,
+    settings as settings_router,
     shopping,
 )
-from recetario.application.ports import LlmRecipeExtractor, NutritionProvider, TaskExporter
+from recetario.application.ports import TaskExporter
 from recetario.infrastructure.config import Settings, get_settings
 from recetario.infrastructure.db.session import create_db_engine, create_session_factory
 from recetario.infrastructure.scraping import RecipeScrapersAdapter
+from recetario.infrastructure.settings_store import EnvFileSettingsStore
 from recetario.infrastructure.video import YtDlpTranscriptFetcher
-
-
-def _make_extractor_factory(
-    settings: Settings,
-) -> Callable[[], LlmRecipeExtractor | None]:
-    """LLM enrichment is opt-in: only built when an Anthropic key is configured."""
-    if not settings.anthropic_api_key:
-        return lambda: None
-
-    def build() -> LlmRecipeExtractor | None:
-        from recetario.infrastructure.llm import AnthropicRecipeExtractor
-
-        return AnthropicRecipeExtractor(
-            settings.anthropic_api_key, model=settings.anthropic_model
-        )
-
-    return build
-
-
-def _make_provider_factory(
-    settings: Settings,
-) -> Callable[[], NutritionProvider | None]:
-    """USDA matching needs the live FDC provider; absent a key, it's unavailable."""
-    if not settings.fdc_api_key:
-        return lambda: None
-
-    def build() -> NutritionProvider | None:
-        from recetario.infrastructure.nutrition.fdc_client import UsdaFdcClient
-
-        return UsdaFdcClient(settings.fdc_api_key)
-
-    return build
 
 
 def _make_task_exporter_factory(settings: Settings):
@@ -95,8 +64,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.video_fetcher_factory = YtDlpTranscriptFetcher
     # Optional LLM enrichment of scraped drafts. Both factories return None when
     # their API key is absent; tests override them to exercise the path offline.
-    app.state.extractor_factory = _make_extractor_factory(settings)
-    app.state.nutrition_provider_factory = _make_provider_factory(settings)
+    # The Settings router rebuilds these on app.state when a user saves a key, so
+    # enabling enrichment takes effect without a restart.
+    app.state.extractor_factory = make_extractor_factory(settings)
+    app.state.nutrition_provider_factory = make_provider_factory(settings)
+    # Where the in-app Settings panel persists user keys (this is also the file
+    # `Settings` reads on boot — see config.py).
+    app.state.settings_store = EnvFileSettingsStore(settings.config_env_file)
     # Google Tasks export (Phase 6); tests override with a fake exporter.
     app.state.task_exporter_factory = _make_task_exporter_factory(settings)
 
@@ -116,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(meals.router)
     app.include_router(shopping.router)
     app.include_router(integrations.router)
+    app.include_router(settings_router.router)
     return app
 
 

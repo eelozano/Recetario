@@ -7,12 +7,15 @@ import { RecipeDetail } from "./pages/RecipeDetail";
 import { WeekCalendar } from "./pages/WeekCalendar";
 import { ShoppingSidebar, ShoppingListDetail } from "./pages/ShoppingLists";
 import { Settings } from "./pages/Settings";
+import { NewRecipe } from "./pages/NewRecipe";
 
 type View = "recipes" | "calendar" | "shopping" | "settings";
 
 function App() {
   const [view, setView] = useState<View>("recipes");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // When true (in the recipes view), the main panel shows the manual-create form.
+  const [creating, setCreating] = useState(false);
   const [selectedShoppingId, setSelectedShoppingId] = useState<number | null>(null);
   // Bumped whenever the recipe set changes (import, finalize) to reload the list
   // and the calendar's recipe picker.
@@ -56,15 +59,28 @@ function App() {
 
         {view === "recipes" && (
           <>
+            <button
+              className="btn btn--accent sidebar__new-recipe"
+              onClick={() => {
+                setCreating(true);
+                setSelectedId(null);
+              }}
+            >
+              + New recipe
+            </button>
             <ImportRecipe
               onImported={(id) => {
                 refreshList();
+                setCreating(false);
                 setSelectedId(id);
               }}
             />
             <RecipeList
-              onSelect={setSelectedId}
-              selectedId={selectedId}
+              onSelect={(id) => {
+                setCreating(false);
+                setSelectedId(id);
+              }}
+              selectedId={creating ? null : selectedId}
               reloadKey={listVersion}
             />
           </>
@@ -111,12 +127,22 @@ function App() {
               }}
             />
           )
+        ) : creating ? (
+          <NewRecipe
+            onCreated={(id) => {
+              setCreating(false);
+              refreshList();
+              setSelectedId(id);
+            }}
+            onCancel={() => setCreating(false)}
+          />
         ) : selectedId == null ? (
           <div className="empty">
             <h2>Select a recipe</h2>
             <p className="muted">
-              Paste a recipe page or video link above to import one, or pick a recipe
-              on the left to see its ingredient-level macro breakdown.
+              Click <strong>+ New recipe</strong> to add one by hand, paste a recipe
+              page or video link to import one, or pick a recipe on the left to see its
+              macro breakdown.
             </p>
           </div>
         ) : (

@@ -355,6 +355,82 @@ body {
   color: var(--text);
   font-size: 13px;
 }
+.link-btn--danger {
+  color: var(--bad);
+}
+.link-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  text-decoration: none;
+}
+
+/* ---- Recipe edit form ---- */
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 760px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.field--narrow {
+  max-width: 160px;
+}
+.field input[type="text"],
+.field input[type="number"],
+.field textarea {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+.edit-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edit-row {
+  display: grid;
+  grid-template-columns: 70px 90px 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.edit-row--head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+.edit-row input[type="text"] {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: var(--text);
+  font-size: 13px;
+}
+.edit-row__tools {
+  display: flex;
+  gap: 2px;
+}
+.edit-row__tools .link-btn {
+  font-size: 15px;
+  padding: 2px 5px;
+}
+.edit-hint {
+  font-size: 12px;
+  margin-top: 4px;
+}
 .unit {
   color: var(--muted);
   font-weight: 400;

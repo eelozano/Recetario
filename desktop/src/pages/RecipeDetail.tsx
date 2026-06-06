@@ -72,6 +72,8 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
   // Two-step delete confirmation (window.confirm is unreliable in the webview).
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Whether the detail is in edit mode (the title/ingredients/instructions form).
+  const [editing, setEditing] = useState(false);
   // Which ingredient position has its USDA-link panel open (null = none).
   const [linkingPosition, setLinkingPosition] = useState<number | null>(null);
 
@@ -79,6 +81,7 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
     let active = true;
     setConfirmingDelete(false);
     setLinkingPosition(null);
+    setEditing(false);
     (async () => {
       setLoading(true);
       setError(null);
@@ -171,6 +174,19 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
   if (error && !recipe) return <p className="error">{error}</p>;
   if (!recipe || !macros) return null;
 
+  if (editing) {
+    return (
+      <RecipeEditForm
+        recipe={recipe}
+        onSaved={() => {
+          setEditing(false);
+          reload();
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    );
+  }
+
   // Columns come from whichever macros the recipe actually accumulated.
   const columns = orderedMacroKeys(Object.keys(macros.totals));
   const isDraft = recipe.status === "draft";
@@ -195,13 +211,18 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
                 </button>
               </>
             ) : (
-              <button
-                className="btn"
-                onClick={() => setConfirmingDelete(true)}
-                title="Delete this recipe"
-              >
-                Delete
-              </button>
+              <>
+                <button className="btn" onClick={() => setEditing(true)} title="Edit this recipe">
+                  Edit
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => setConfirmingDelete(true)}
+                  title="Delete this recipe"
+                >
+                  Delete
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -354,6 +375,273 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
           )}
         </table>
       </section>
+    </div>
+  );
+}
+
+type EditRow = {
+  key: string;
+  name: string;
+  quantity: string;
+  unit: string;
+  notes: string;
+  // Carried through unchanged so editing a line's text doesn't drop its USDA
+  // link / provenance; new rows start unlinked (user links them post-save).
+  rawText: string | null;
+  usdaFdcId: number | null;
+  gramWeight: string | null;
+};
+
+let rowSeq = 0;
+const nextKey = () => `row-${rowSeq++}`;
+
+function toEditRow(line: IngredientLine): EditRow {
+  return {
+    key: nextKey(),
+    name: line.name ?? "",
+    quantity: line.quantity != null ? String(line.quantity) : "",
+    unit: line.unit ?? "",
+    notes: line.notes ?? "",
+    rawText: line.raw_text ?? null,
+    usdaFdcId: line.usda_fdc_id ?? null,
+    gramWeight: line.gram_weight != null ? String(line.gram_weight) : null,
+  };
+}
+
+function blankRow(): EditRow {
+  return {
+    key: nextKey(),
+    name: "",
+    quantity: "",
+    unit: "",
+    notes: "",
+    rawText: null,
+    usdaFdcId: null,
+    gramWeight: null,
+  };
+}
+
+/**
+ * Edit mode for a recipe: title, description, servings, ingredient rows (add /
+ * remove / reorder / retype), and directions. Saves the whole recipe via PUT
+ * (toUpdateBody round-trips the full shape), preserving each line's USDA link.
+ */
+function RecipeEditForm({
+  recipe,
+  onSaved,
+  onCancel,
+}: {
+  recipe: RecipeOut;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState(recipe.title);
+  const [description, setDescription] = useState(recipe.description ?? "");
+  const [servings, setServings] = useState(
+    recipe.servings != null ? String(recipe.servings) : "",
+  );
+  const [instructions, setInstructions] = useState(recipe.instructions_md ?? "");
+  const [rows, setRows] = useState<EditRow[]>(() =>
+    [...recipe.ingredients].sort((a, b) => a.position - b.position).map(toEditRow),
+  );
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function patchRow(key: string, patch: Partial<EditRow>) {
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+  function removeRow(key: string) {
+    setRows((rs) => rs.filter((r) => r.key !== key));
+  }
+  function move(key: string, dir: -1 | 1) {
+    setRows((rs) => {
+      const i = rs.findIndex((r) => r.key === key);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= rs.length) return rs;
+      const next = [...rs];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  async function save() {
+    if (saving) return;
+    if (!title.trim()) {
+      setErr("Title can't be empty.");
+      return;
+    }
+    if (rows.some((r) => !r.name.trim())) {
+      setErr("Every ingredient needs a name — remove any blank rows.");
+      return;
+    }
+    const servingsNum = servings.trim() ? Number(servings) : null;
+    if (servingsNum != null && (!Number.isInteger(servingsNum) || servingsNum < 1)) {
+      setErr("Servings must be a whole number of at least 1.");
+      return;
+    }
+
+    setSaving(true);
+    setErr(null);
+    const body = toUpdateBody(recipe, {
+      title: title.trim(),
+      description: description.trim() || null,
+      servings: servingsNum,
+      instructions_md: instructions.trim() || null,
+      ingredients: rows.map((r) => ({
+        name: r.name.trim(),
+        quantity: r.quantity.trim() || null,
+        unit: r.unit.trim() || null,
+        raw_text: r.rawText,
+        notes: r.notes.trim() || null,
+        usda_fdc_id: r.usdaFdcId,
+        gram_weight: r.gramWeight,
+      })),
+    });
+    const { error: apiError } = await api.PUT("/recipes/{recipe_id}", {
+      params: { path: { recipe_id: recipe.id } },
+      body,
+    });
+    setSaving(false);
+    if (apiError) {
+      setErr("Could not save changes.");
+      return;
+    }
+    onSaved();
+  }
+
+  const hasLinks = rows.some((r) => r.usdaFdcId != null);
+
+  return (
+    <div className="detail">
+      <header className="detail__header">
+        <div className="detail__titlebar">
+          <h1>Edit recipe</h1>
+          <div className="detail__actions">
+            <button className="btn btn--accent" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+            <button className="btn" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+          </div>
+        </div>
+        {err && <p className="error">{err}</p>}
+      </header>
+
+      <div className="edit-form">
+        <label className="field">
+          <span>Title</span>
+          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+
+        <label className="field">
+          <span>Description</span>
+          <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </label>
+
+        <label className="field field--narrow">
+          <span>Servings</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={servings}
+            onChange={(e) => setServings(e.target.value)}
+          />
+        </label>
+
+        <div className="field">
+          <span>Ingredients</span>
+          <div className="edit-rows">
+            <div className="edit-row edit-row--head">
+              <span>Qty</span>
+              <span>Unit</span>
+              <span>Name</span>
+              <span>Notes</span>
+              <span aria-hidden />
+            </div>
+            {rows.map((r, i) => (
+              <div className="edit-row" key={r.key}>
+                <input
+                  className="edit-row__qty"
+                  type="text"
+                  placeholder="1"
+                  value={r.quantity}
+                  onChange={(e) => patchRow(r.key, { quantity: e.target.value })}
+                />
+                <input
+                  className="edit-row__unit"
+                  type="text"
+                  placeholder="cup"
+                  value={r.unit}
+                  onChange={(e) => patchRow(r.key, { unit: e.target.value })}
+                />
+                <input
+                  className="edit-row__name"
+                  type="text"
+                  placeholder="Ingredient"
+                  value={r.name}
+                  onChange={(e) => patchRow(r.key, { name: e.target.value })}
+                />
+                <input
+                  className="edit-row__notes"
+                  type="text"
+                  placeholder="(optional)"
+                  value={r.notes}
+                  onChange={(e) => patchRow(r.key, { notes: e.target.value })}
+                />
+                <div className="edit-row__tools">
+                  <button
+                    type="button"
+                    className="link-btn"
+                    title="Move up"
+                    disabled={i === 0}
+                    onClick={() => move(r.key, -1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    title="Move down"
+                    disabled={i === rows.length - 1}
+                    onClick={() => move(r.key, 1)}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className="link-btn link-btn--danger"
+                    title="Remove ingredient"
+                    onClick={() => removeRow(r.key)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="btn" onClick={() => setRows((rs) => [...rs, blankRow()])}>
+            + Add ingredient
+          </button>
+          {hasLinks && (
+            <p className="muted edit-hint">
+              USDA links and gram weights are preserved. New rows start unlinked — link
+              them from the breakdown after saving.
+            </p>
+          )}
+        </div>
+
+        <label className="field">
+          <span>Directions</span>
+          <textarea
+            rows={10}
+            placeholder="One step per line."
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+          />
+        </label>
+      </div>
     </div>
   );
 }

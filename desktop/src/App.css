@@ -381,6 +381,15 @@ body {
 .field--narrow {
   max-width: 160px;
 }
+/* Servings + tags side by side at the top of the new-recipe form. */
+.new-recipe__split {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+}
+.new-recipe__split .field:last-child {
+  flex: 1;
+}
 .field input[type="text"],
 .field input[type="number"],
 .field textarea {
@@ -510,6 +519,12 @@ body {
   background: var(--bad);
   border-color: var(--bad);
   color: #0c1322;
+}
+
+/* ---- New-recipe button (above the import box) ---- */
+.sidebar__new-recipe {
+  width: 100%;
+  margin-bottom: 16px;
 }
 
 /* ---- Import-from-URL box ---- */

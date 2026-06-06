@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
-from recetario.application.ports import TaskExporter
+from recetario.application.ports import NutritionProvider, TaskExporter
 from recetario.identity import DEFAULT_OWNER_ID
 from recetario.application.use_cases.export import ConnectGoogleTasks, ExportShoppingListToTasks
 from recetario.application.use_cases.ingestion import (
@@ -30,7 +30,7 @@ from recetario.application.use_cases.meal import (
 from recetario.application.use_cases.nutrition import (
     CalculateRecipeMacros,
     LinkRecipeIngredientToUsda,
-    SearchCachedFoods,
+    SearchFoods,
 )
 from recetario.application.use_cases.shopping import (
     DeleteShoppingList,
@@ -97,6 +97,15 @@ def get_nutrition_repository(
     return SqlAlchemyNutritionRepository(session)
 
 
+def get_nutrition_provider(request: Request) -> NutritionProvider | None:
+    """The live FDC provider, or None when no FDC key is configured.
+
+    The factory lives on app.state (built in create_app); tests override it with
+    a stub or `lambda: None` so no live FDC call is ever made.
+    """
+    return request.app.state.nutrition_provider_factory()
+
+
 def get_ingestion_repository(
     session: Session = Depends(get_session),
 ) -> SqlAlchemyIngestionJobRepository:
@@ -147,14 +156,16 @@ def calculate_macros_uc(
 def link_ingredient_uc(
     recipes: SqlAlchemyRecipeRepository = Depends(get_recipe_repository),
     nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
+    provider: NutritionProvider | None = Depends(get_nutrition_provider),
 ) -> LinkRecipeIngredientToUsda:
-    return LinkRecipeIngredientToUsda(recipes, nutrition)
+    return LinkRecipeIngredientToUsda(recipes, nutrition, provider)
 
 
 def search_foods_uc(
     nutrition: SqlAlchemyNutritionRepository = Depends(get_nutrition_repository),
-) -> SearchCachedFoods:
-    return SearchCachedFoods(nutrition)
+    provider: NutritionProvider | None = Depends(get_nutrition_provider),
+) -> SearchFoods:
+    return SearchFoods(nutrition, provider)
 
 
 def schedule_meal_uc(

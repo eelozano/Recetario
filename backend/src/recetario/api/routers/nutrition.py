@@ -14,10 +14,11 @@ from recetario.api.schemas import (
 from recetario.application.use_cases.nutrition import (
     CalculateRecipeMacros,
     FoodNotCachedError,
+    FoodNotFoundError,
     IngredientLineNotFoundError,
     LinkIngredientInput,
     LinkRecipeIngredientToUsda,
-    SearchCachedFoods,
+    SearchFoods,
 )
 from recetario.application.use_cases.recipes import RecipeNotFoundError
 
@@ -55,10 +56,15 @@ def link_ingredient(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipe not found")
     except IngredientLineNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ingredient line not found")
+    except FoodNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"USDA food {exc.fdc_id} was not found in FoodData Central",
+        )
     except FoodNotCachedError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"USDA food {exc.fdc_id} is not cached; seed it first",
+            detail=f"USDA food {exc.fdc_id} is not cached and live lookup is unavailable",
         )
     return RecipeOut.from_domain(recipe)
 
@@ -67,6 +73,6 @@ def link_ingredient(
 def search_foods(
     query: str = Query(min_length=1),
     limit: int = Query(default=20, ge=1, le=100),
-    uc: SearchCachedFoods = Depends(deps.search_foods_uc),
+    uc: SearchFoods = Depends(deps.search_foods_uc),
 ):
     return [FoodSummaryOut.from_dto(f) for f in uc(query, limit=limit)]

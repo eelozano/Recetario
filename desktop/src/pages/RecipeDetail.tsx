@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { Fragment, type FormEvent, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { api, type MacroBreakdown, type RecipeOut } from "../api/client";
+import {
+  api,
+  type FoodSummary,
+  type MacroBreakdown,
+  type RecipeOut,
+} from "../api/client";
 import type { paths } from "../api/schema";
 import {
   formatAmount,
@@ -67,10 +72,13 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
   // Two-step delete confirmation (window.confirm is unreliable in the webview).
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Which ingredient position has its USDA-link panel open (null = none).
+  const [linkingPosition, setLinkingPosition] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
     setConfirmingDelete(false);
+    setLinkingPosition(null);
     (async () => {
       setLoading(true);
       setError(null);
@@ -124,6 +132,39 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
       return;
     }
     onDeleted?.();
+  }
+
+  // Reload recipe + macros in place after a link/unlink, and refresh the parent
+  // list (the "unlinked" badge in the sidebar may change).
+  function reload() {
+    setVersion((v) => v + 1);
+    onChanged?.();
+  }
+
+  // Unlink one line by PUTting the recipe with that line's USDA match cleared.
+  async function unlink(position: number) {
+    if (!recipe) return;
+    setError(null);
+    const body = toUpdateBody(recipe, {
+      ingredients: recipe.ingredients.map((l) => ({
+        name: l.name,
+        quantity: l.quantity,
+        unit: l.unit,
+        raw_text: l.raw_text,
+        notes: l.notes,
+        usda_fdc_id: l.position === position ? null : l.usda_fdc_id,
+        gram_weight: l.position === position ? null : l.gram_weight,
+      })),
+    });
+    const { error: apiError } = await api.PUT("/recipes/{recipe_id}", {
+      params: { path: { recipe_id: recipe.id } },
+      body,
+    });
+    if (apiError) {
+      setError("Could not unlink this ingredient.");
+      return;
+    }
+    reload();
   }
 
   if (loading) return <p className="muted">Loading…</p>;
@@ -219,38 +260,75 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
 
       <section>
         <h2 className="section-title">Per-ingredient breakdown</h2>
-        {columns.length === 0 ? (
+        {columns.length === 0 && (
           <p className="muted">
-            No macros yet — link ingredients to USDA foods to populate this view.
+            No macros yet — link each ingredient to a USDA food below to populate this view.
           </p>
-        ) : (
-          <table className="macro-table">
-            <thead>
-              <tr>
-                <th className="left">Ingredient</th>
-                <th>Grams</th>
-                {columns.map((c) => (
-                  <th key={c}>
-                    {macroLabel(c)}
-                    <span className="unit"> ({macroUnit(c)})</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {macros.lines.map((line, i) => (
-                <tr key={line.recipe_ingredient_id ?? i} className={line.resolved ? "" : "is-unresolved"}>
-                  <td className="left">
-                    {line.ingredient_name}
-                    {!line.resolved && <span className="tag tag--warn">not linked</span>}
-                  </td>
-                  <td>{line.gram_weight != null ? formatAmount(line.gram_weight) : "—"}</td>
-                  {columns.map((c) => (
-                    <td key={c}>{line.resolved ? formatAmount(line.macros[c]) : "—"}</td>
-                  ))}
-                </tr>
+        )}
+        <table className="macro-table">
+          <thead>
+            <tr>
+              <th className="left">Ingredient</th>
+              <th>Grams</th>
+              {columns.map((c) => (
+                <th key={c}>
+                  {macroLabel(c)}
+                  <span className="unit"> ({macroUnit(c)})</span>
+                </th>
               ))}
-            </tbody>
+              <th aria-label="actions"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {macros.lines.map((line, i) => {
+              const position = linePosition(recipe, line, i);
+              const isOpen = linkingPosition === position;
+              return (
+                <Fragment key={line.recipe_ingredient_id ?? i}>
+                  <tr className={line.resolved ? "" : "is-unresolved"}>
+                    <td className="left">
+                      {line.ingredient_name}
+                      {!line.resolved && <span className="tag tag--warn">not linked</span>}
+                    </td>
+                    <td>{line.gram_weight != null ? formatAmount(line.gram_weight) : "—"}</td>
+                    {columns.map((c) => (
+                      <td key={c}>{line.resolved ? formatAmount(line.macros[c]) : "—"}</td>
+                    ))}
+                    <td className="macro-table__action">
+                      {position == null ? null : line.resolved ? (
+                        <button className="link-btn" onClick={() => unlink(position)}>
+                          Unlink
+                        </button>
+                      ) : (
+                        <button
+                          className="link-btn"
+                          onClick={() => setLinkingPosition(isOpen ? null : position)}
+                        >
+                          {isOpen ? "Close" : "Link"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {isOpen && position != null && (
+                    <tr className="link-panel-row">
+                      <td colSpan={columns.length + 3}>
+                        <LinkPanel
+                          recipeId={recipe.id}
+                          position={position}
+                          onLinked={() => {
+                            setLinkingPosition(null);
+                            reload();
+                          }}
+                          onCancel={() => setLinkingPosition(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+          {columns.length > 0 && (
             <tfoot>
               <tr>
                 <td className="left">Total</td>
@@ -260,6 +338,7 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
                     <strong>{formatAmount(macros.totals[c])}</strong>
                   </td>
                 ))}
+                <td></td>
               </tr>
               {macros.per_serving && (
                 <tr className="per-serving-row">
@@ -268,12 +347,157 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
                   {columns.map((c) => (
                     <td key={c}>{formatAmount(macros.per_serving![c])}</td>
                   ))}
+                  <td></td>
                 </tr>
               )}
             </tfoot>
-          </table>
-        )}
+          )}
+        </table>
       </section>
+    </div>
+  );
+}
+
+/** Map a macro line back to its recipe ingredient's position (the link API key).
+ *  Matches on the persisted recipe_ingredient id, falling back to the i-th line. */
+function linePosition(
+  recipe: RecipeOut,
+  line: MacroBreakdown["lines"][number],
+  i: number,
+): number | null {
+  if (line.recipe_ingredient_id != null) {
+    const match = recipe.ingredients.find((l) => l.id === line.recipe_ingredient_id);
+    if (match) return match.position;
+  }
+  return recipe.ingredients[i]?.position ?? null;
+}
+
+/**
+ * Inline panel to link one ingredient line to a USDA food: search FoodData
+ * Central, pick a match, enter the gram weight for this line, and confirm.
+ */
+function LinkPanel({
+  recipeId,
+  position,
+  onLinked,
+  onCancel,
+}: {
+  recipeId: number;
+  position: number;
+  onLinked: () => void;
+  onCancel: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<FoodSummary[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<FoodSummary | null>(null);
+  const [grams, setGrams] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function search(e: FormEvent) {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    setSearching(true);
+    setErr(null);
+    const { data, error } = await api.GET("/foods/search", {
+      params: { query: { query: q, limit: 10 } },
+    });
+    setSearching(false);
+    setSearched(true);
+    if (error) {
+      setErr("Search failed. Is the backend running?");
+      return;
+    }
+    setResults(data ?? []);
+  }
+
+  async function confirm() {
+    if (!selected || !grams.trim() || busy) return;
+    setBusy(true);
+    setErr(null);
+    const { error } = await api.POST(
+      "/recipes/{recipe_id}/ingredients/{position}/link",
+      {
+        params: { path: { recipe_id: recipeId, position } },
+        body: { fdc_id: selected.fdc_id, gram_weight: grams.trim() },
+      },
+    );
+    setBusy(false);
+    if (error) {
+      setErr("Could not link this food. Check the gram weight and try again.");
+      return;
+    }
+    onLinked();
+  }
+
+  return (
+    <div className="link-panel">
+      <form className="link-panel__search" onSubmit={search}>
+        <input
+          autoFocus
+          type="text"
+          placeholder="Search USDA foods (e.g. “chicken breast”)…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button className="btn" type="submit" disabled={searching || !query.trim()}>
+          {searching ? "Searching…" : "Search"}
+        </button>
+        <button className="btn" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </form>
+
+      {searched && !searching && results.length === 0 && !err && (
+        <p className="muted">No matches found. Try a simpler or different term.</p>
+      )}
+
+      {results.length > 0 && (
+        <ul className="link-panel__results">
+          {results.map((food) => (
+            <li key={food.fdc_id}>
+              <label>
+                <input
+                  type="radio"
+                  name={`food-${position}`}
+                  checked={selected?.fdc_id === food.fdc_id}
+                  onChange={() => setSelected(food)}
+                />
+                <span>{food.description}</span>
+                {food.data_type && <span className="tag">{food.data_type}</span>}
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {selected && (
+        <div className="link-panel__confirm">
+          <label>
+            Grams for this ingredient
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder="e.g. 150"
+              value={grams}
+              onChange={(e) => setGrams(e.target.value)}
+            />
+          </label>
+          <button
+            className="btn btn--accent"
+            onClick={confirm}
+            disabled={busy || !grams.trim()}
+          >
+            {busy ? "Linking…" : `Link to ${selected.description}`}
+          </button>
+        </div>
+      )}
+
+      {err && <p className="error">{err}</p>}
     </div>
   );
 }

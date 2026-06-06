@@ -24,6 +24,10 @@ export type MacroBreakdown =
   paths["/recipes/{recipe_id}/macros"]["get"]["responses"]["200"]["content"]["application/json"];
 export type LineMacro = MacroBreakdown["lines"][number];
 
+// A USDA food search hit, for the ingredient-link picker.
+export type FoodSummary =
+  paths["/foods/search"]["get"]["responses"]["200"]["content"]["application/json"][number];
+
 // Ingestion (recipe import) job, as polled by the Import-from-URL UI.
 export type IngestionJob =
   paths["/ingestion/jobs/{job_id}"]["get"]["responses"]["200"]["content"]["application/json"];

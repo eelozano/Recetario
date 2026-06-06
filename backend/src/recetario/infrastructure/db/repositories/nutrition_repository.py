@@ -49,22 +49,38 @@ class SqlAlchemyNutritionRepository:
         food.data_type = detail.data_type
         food.category = detail.category
 
-        # Replace nutrient + portion rows wholesale so re-seeding stays idempotent.
-        food.nutrients = [
-            UsdaFoodNutrientModel(
-                nutrient=self._get_or_create_nutrient(fn),
-                amount=fn.amount,
-                unit_name=fn.unit,
+        # Clear the existing child rows and flush the DELETEs *before* inserting
+        # the replacements. Reassigning the collection in a single flush can emit
+        # the new INSERTs ahead of the orphan DELETEs, transiently colliding on
+        # the unique (fdc_id, nutrient_id) index; flushing here keeps re-upsert
+        # idempotent. (No-op for a freshly created food.)
+        food.nutrients.clear()
+        food.portions.clear()
+        self._session.flush()
+
+        # Dedup incoming nutrients by USDA id: FDC can report the same nutrient
+        # more than once for a food (e.g. Energy in kcal via different Atwater
+        # factors). Without this, two rows would share (fdc_id, nutrient_id) and
+        # violate the unique index — which previously crashed the ingestion job.
+        seen: set[int] = set()
+        for fn in detail.nutrients:
+            if fn.usda_nutrient_id in seen:
+                continue
+            seen.add(fn.usda_nutrient_id)
+            food.nutrients.append(
+                UsdaFoodNutrientModel(
+                    nutrient=self._get_or_create_nutrient(fn),
+                    amount=fn.amount,
+                    unit_name=fn.unit,
+                )
             )
-            for fn in detail.nutrients
-        ]
-        food.portions = [
-            UsdaFoodPortionModel(
-                portion_description=fp.description,
-                gram_weight=fp.gram_weight,
+        for fp in detail.portions:
+            food.portions.append(
+                UsdaFoodPortionModel(
+                    portion_description=fp.description,
+                    gram_weight=fp.gram_weight,
+                )
             )
-            for fp in detail.portions
-        ]
         self._session.commit()
 
     def _load(self, fdc_id: int) -> UsdaFoodModel | None:

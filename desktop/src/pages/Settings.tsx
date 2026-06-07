@@ -2,25 +2,22 @@ import { type FormEvent, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, type SettingsStatus, type SettingsUpdate } from "../api/client";
 
-// Where to get each key. FDC is free + instant; Anthropic is paid + optional.
-const FDC_SIGNUP = "https://fdc.nal.usda.gov/api-key-signup.html";
+// Where to get the key. Anthropic is paid + optional.
 const ANTHROPIC_KEYS = "https://console.anthropic.com/settings/keys";
 
 /**
  * Bring-your-own-keys panel. The app works without keys (recipes, macros,
- * calendar, shopping); these unlock the two live features:
- *   • USDA FoodData Central key → live ingredient search + on-the-fly linking
- *   • Anthropic key            → LLM-assisted recipe import from a URL
+ * calendar, shopping); the Anthropic key unlocks the one live feature:
+ *   • Anthropic key → LLM-assisted recipe import from a web/video URL
  *
  * Keys are written to ~/.recetario/.env on this machine and never leave it. The
- * status we load back only says whether each key is set (plus a masked hint) —
- * the raw values are never sent to the UI.
+ * status we load back only says whether the key is set (plus a masked hint) —
+ * the raw value is never sent to the UI.
  */
 export function Settings() {
   const [status, setStatus] = useState<SettingsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [fdcInput, setFdcInput] = useState("");
   const [anthropicInput, setAnthropicInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -49,7 +46,6 @@ export function Settings() {
     } else {
       setStatus(data);
       setError(null);
-      setFdcInput("");
       setAnthropicInput("");
       setSaved(true);
     }
@@ -61,7 +57,6 @@ export function Settings() {
     // Only send fields the user actually typed into — an untouched field is
     // left exactly as it was on the server.
     const update: SettingsUpdate = {};
-    if (fdcInput.trim()) update.fdc_api_key = fdcInput.trim();
     if (anthropicInput.trim()) update.anthropic_api_key = anthropicInput.trim();
     if (Object.keys(update).length === 0) return;
     await persist(update);
@@ -73,31 +68,15 @@ export function Settings() {
     <div className="settings">
       <h2>Settings</h2>
       <p className="muted settings__intro">
-        Recetario works out of the box. Add your own API keys to unlock live USDA
-        nutrition lookups and AI-assisted recipe import. Keys are stored only on
-        this computer (<code>~/.recetario/.env</code>) and take effect immediately.
+        Recetario works out of the box. Add an Anthropic API key to unlock
+        AI-assisted recipe import from a web or video URL. The key is stored only
+        on this computer (<code>~/.recetario/.env</code>) and takes effect immediately.
       </p>
 
       {error && <p className="error">{error}</p>}
       {saved && !error && <p className="settings__saved">Saved — your changes are live.</p>}
 
       <form className="settings__form" onSubmit={onSubmit}>
-        <KeyField
-          label="USDA FoodData Central key"
-          help="Free and instant. Enables live ingredient search and macro linking."
-          status={status?.fdc_api_key}
-          value={fdcInput}
-          onChange={setFdcInput}
-          getKeyUrl={FDC_SIGNUP}
-          getKeyLabel="Get a free FDC key"
-          onClear={
-            status?.fdc_api_key.configured
-              ? () => void persist({ fdc_api_key: "" })
-              : undefined
-          }
-          disabled={saving}
-        />
-
         <KeyField
           label="Anthropic API key"
           help="Paid. Enables importing a recipe from a web or video URL via Claude."
@@ -118,9 +97,9 @@ export function Settings() {
           <button
             type="submit"
             className="btn btn--accent"
-            disabled={saving || (!fdcInput.trim() && !anthropicInput.trim())}
+            disabled={saving || !anthropicInput.trim()}
           >
-            {saving ? "Saving…" : "Save keys"}
+            {saving ? "Saving…" : "Save key"}
           </button>
         </div>
       </form>

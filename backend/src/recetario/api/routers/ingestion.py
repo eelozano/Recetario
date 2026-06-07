@@ -31,30 +31,57 @@ from recetario.infrastructure.db.repositories import (
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
 
-def _build_components(request: Request, session):
-    """Assemble the optional LLM extractor, FDC provider, and enricher.
+def _make_extractor(request: Request):
+    """The optional LLM extractor, or None when no Anthropic key is configured."""
+    factory = getattr(request.app.state, "extractor_factory", None)
+    return factory() if factory else None
 
-    Returns `(extractor, provider, enrich)`. The extractor alone drives video
-    extraction; the enricher (extractor + provider) drives USDA matching and is
-    None unless both are configured. The live provider is returned so the caller
-    can close its HTTP connection after the job. If a provider was opened without
-    an extractor that could use it, it's closed here and returned as None.
-    """
-    extractor_factory = getattr(request.app.state, "extractor_factory", None)
-    provider_factory = getattr(request.app.state, "nutrition_provider_factory", None)
-    extractor = extractor_factory() if extractor_factory else None
-    provider = provider_factory() if provider_factory else None
 
-    if extractor is not None and provider is not None:
-        enrich = EnrichDraftRecipe(
-            extractor, provider, SqlAlchemyNutritionRepository(session)
+def _make_provider(request: Request):
+    """The optional live FDC provider, or None when no FDC key is configured."""
+    factory = getattr(request.app.state, "nutrition_provider_factory", None)
+    return factory() if factory else None
+
+
+def _run_web_job(request: Request, session, jobs, create_recipe, job_id: int) -> None:
+    """Deterministic-first web import: scrape, falling back to the LLM only when
+    scraping fails and an Anthropic key is configured."""
+    extractor = _make_extractor(request)
+    scraper = request.app.state.scraper_factory()
+    # The page-text fetch is only needed for the LLM fallback path.
+    fetch_page_text = getattr(scraper, "fetch_page_text", None) if extractor else None
+    RunUrlIngestion(
+        jobs,
+        create_recipe,
+        scraper,
+        extractor=extractor,
+        fetch_page_text=fetch_page_text,
+    )(job_id)
+
+
+def _run_video_job(request: Request, session, jobs, create_recipe, job) -> None:
+    """Video import: captions → LLM (required) → optional USDA enrichment."""
+    extractor = _make_extractor(request)
+    if extractor is None:
+        job.mark_failed(
+            "Video import requires an Anthropic API key "
+            "(set RECETARIO_ANTHROPIC_API_KEY)."
         )
-        return extractor, provider, enrich
+        jobs.update(job)
+        return
 
-    if extractor is None and provider is not None and hasattr(provider, "close"):
-        provider.close()
-        provider = None
-    return extractor, provider, None
+    provider = _make_provider(request)
+    enrich = (
+        EnrichDraftRecipe(extractor, provider, SqlAlchemyNutritionRepository(session))
+        if provider is not None
+        else None
+    )
+    try:
+        fetcher = request.app.state.video_fetcher_factory()
+        RunVideoIngestion(jobs, create_recipe, fetcher, extractor, enrich)(job.id)
+    finally:
+        if provider is not None and hasattr(provider, "close"):
+            provider.close()
 
 
 def _run_job(request: Request, job_id: int) -> None:
@@ -62,11 +89,11 @@ def _run_job(request: Request, job_id: int) -> None:
 
     The request-scoped session is already closed by the time this fires, so we
     open a fresh one from the app's session factory. The job's `input_type`
-    selects the web (scraper) or video (yt-dlp + LLM) pipeline. Adapter factories
-    on `app.state` are overridden by tests to avoid live network/LLM calls.
+    selects the web (deterministic scraper, LLM fallback) or video (captions +
+    LLM) pipeline. Adapter factories on `app.state` are overridden by tests to
+    avoid live network/LLM calls.
     """
     session = request.app.state.session_factory()
-    extractor, provider, enrich = _build_components(request, session)
     try:
         jobs = SqlAlchemyIngestionJobRepository(session)
         create_recipe = CreateRecipe(SqlAlchemyRecipeRepository(session))
@@ -75,21 +102,10 @@ def _run_job(request: Request, job_id: int) -> None:
             return
 
         if job.input_type is IngestionInputType.VIDEO:
-            if extractor is None:
-                job.mark_failed(
-                    "Video import requires an Anthropic API key "
-                    "(set RECETARIO_ANTHROPIC_API_KEY)."
-                )
-                jobs.update(job)
-                return
-            fetcher = request.app.state.video_fetcher_factory()
-            RunVideoIngestion(jobs, create_recipe, fetcher, extractor, enrich)(job_id)
+            _run_video_job(request, session, jobs, create_recipe, job)
         else:
-            scraper = request.app.state.scraper_factory()
-            RunUrlIngestion(jobs, create_recipe, scraper, enrich)(job_id)
+            _run_web_job(request, session, jobs, create_recipe, job_id)
     finally:
-        if provider is not None and hasattr(provider, "close"):
-            provider.close()
         session.close()
 
 

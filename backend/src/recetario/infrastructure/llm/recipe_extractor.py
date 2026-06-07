@@ -56,6 +56,20 @@ _EXTRACT_SYSTEM = (
     "ingredients array."
 )
 
+_WEB_EXTRACT_SYSTEM = (
+    "You extract a single recipe from the text of a web page. The text is the "
+    "page's visible content with markup stripped, so it may include navigation, "
+    "ads, comments, or unrelated prose around the recipe — ignore all of that and "
+    "extract only the recipe itself. Produce a clean title, the number of servings "
+    "if stated (else null), an ordered ingredient list, and ordered preparation "
+    "steps. For each ingredient give a numeric quantity, a unit, and the bare "
+    "ingredient name; use null for a quantity or unit that is not stated. Set "
+    "raw_text to the ingredient line as written on the page (or the name if there "
+    "is no distinct line). Only include ingredients and steps actually present on "
+    "the page — never invent amounts or steps. If the page has no recipe, return "
+    "an empty ingredients array."
+)
+
 _RESOLUTION_SYSTEM = (
     "You match recipe ingredients to USDA FoodData Central foods. Use the "
     "search_usda tool to find candidates for each ingredient (search by the bare "
@@ -216,17 +230,21 @@ def apply_structured(draft: RecipeInput, payload: dict[str, Any]) -> RecipeInput
     )
 
 
-def recipe_from_transcript(
-    payload: dict[str, Any], *, source_url: str | None
+def _recipe_from_extraction(
+    payload: dict[str, Any],
+    *,
+    source_url: str | None,
+    source_type: SourceType,
+    empty_error: str,
 ) -> RecipeInput:
-    """Build a draft RecipeInput from the transcript-extraction JSON.
+    """Build a draft RecipeInput from an extraction JSON (transcript or web text).
 
-    Raises ExtractError if the transcript yielded no recipe (no ingredients) so
-    the video job fails cleanly rather than persisting an empty draft.
+    Raises ExtractError (with a source-specific message) if no ingredients were
+    found, so the job fails cleanly rather than persisting an empty draft.
     """
     ingredients = _ingredients_from_items(payload.get("ingredients"))
     if not ingredients:
-        raise ExtractError("No recipe could be extracted from the video transcript.")
+        raise ExtractError(empty_error)
 
     title = payload.get("title")
     title = title.strip() if isinstance(title, str) and title.strip() else "Untitled recipe"
@@ -245,11 +263,33 @@ def recipe_from_transcript(
     return RecipeInput(
         title=title,
         source_url=source_url,
-        source_type=SourceType.VIDEO,
+        source_type=source_type,
         servings=servings,
         status=RecipeStatus.DRAFT,
         instructions_md=instructions_md,
         ingredients=ingredients,
+    )
+
+
+def recipe_from_transcript(
+    payload: dict[str, Any], *, source_url: str | None
+) -> RecipeInput:
+    """Build a draft RecipeInput from the transcript-extraction JSON."""
+    return _recipe_from_extraction(
+        payload,
+        source_url=source_url,
+        source_type=SourceType.VIDEO,
+        empty_error="No recipe could be extracted from the video transcript.",
+    )
+
+
+def recipe_from_web(payload: dict[str, Any], *, source_url: str | None) -> RecipeInput:
+    """Build a draft RecipeInput from the web-page extraction JSON (LLM fallback)."""
+    return _recipe_from_extraction(
+        payload,
+        source_url=source_url,
+        source_type=SourceType.WEB,
+        empty_error="No recipe could be found on this page.",
     )
 
 
@@ -364,6 +404,25 @@ class AnthropicRecipeExtractor:
         except Exception as exc:  # noqa: BLE001 - normalize to the port's error
             raise ExtractError(f"LLM structuring failed: {exc}") from exc
         return apply_structured(draft, _first_json(resp))
+
+    def extract_from_web(
+        self, page_text: str, *, source_url: str | None
+    ) -> RecipeInput:
+        if not page_text.strip():
+            raise ExtractError("The page had no text to extract a recipe from.")
+        client = self._get_client()
+        prompt = "Extract the recipe from this web page:\n\n" + page_text
+        try:
+            resp = client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                system=_WEB_EXTRACT_SYSTEM,
+                output_config={"format": _EXTRACT_FORMAT},
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as exc:  # noqa: BLE001 - normalize to the port's error
+            raise ExtractError(f"LLM web extraction failed: {exc}") from exc
+        return recipe_from_web(_first_json(resp), source_url=source_url)
 
     def extract_from_transcript(
         self, transcript: str, *, source_url: str | None

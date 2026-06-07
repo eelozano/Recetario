@@ -56,13 +56,19 @@ class LlmRecipeExtractor(Protocol):
     """The LLM decisions only — retrieval and persistence stay in the use case.
 
     `structure` refines a scraped draft (parsing each ingredient line into
-    quantity/unit/name and tidying title/servings). `extract_from_transcript`
-    turns a free-form video transcript into a structured draft. `resolve_nutrition`
-    matches each line to a USDA food, using the live `search` provider to look up
-    candidates, and reports a per-line confidence so low matches can be deferred.
+    quantity/unit/name and tidying title/servings). `extract_from_web` is the
+    fallback for pages the deterministic scraper can't parse: it turns the page's
+    plain text into a structured draft. `extract_from_transcript` does the same
+    for a free-form video transcript. `resolve_nutrition` matches each line to a
+    USDA food, using the live `search` provider to look up candidates, and reports
+    a per-line confidence so low matches can be deferred.
     """
 
     def structure(self, draft: RecipeInput) -> RecipeInput: ...
+
+    def extract_from_web(
+        self, page_text: str, *, source_url: str | None
+    ) -> RecipeInput: ...
 
     def extract_from_transcript(
         self, transcript: str, *, source_url: str | None

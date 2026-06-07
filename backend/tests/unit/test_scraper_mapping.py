@@ -6,7 +6,7 @@ import pytest
 
 from recetario.application.ports import ScrapeError
 from recetario.domain.entities import RecipeStatus, SourceType
-from recetario.infrastructure.scraping import scraped_to_recipe_input
+from recetario.infrastructure.scraping import html_to_text, scraped_to_recipe_input
 
 
 class FakeScraper:
@@ -85,3 +85,64 @@ def test_no_title_and_no_ingredients_raises():
     scraper = FakeScraper(title="", ingredients=[])
     with pytest.raises(ScrapeError):
         scraped_to_recipe_input(scraper, source_url="https://example.com/blog")
+
+
+# --- Deterministic parse of a real schema.org/JSON-LD page (no network, no LLM) ---
+
+# A minimal but realistic page: the recipe is expressed as JSON-LD, the form
+# every major recipe site emits. recipe-scrapers reads this offline from the
+# HTML string, proving a structured import needs neither network nor an API key.
+_JSONLD_HTML = """<!doctype html>
+<html><head><title>Garlic Soup</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Recipe",
+  "name": "Simple Garlic Soup",
+  "recipeYield": "4 servings",
+  "recipeIngredient": ["2 cloves garlic", "1 tbsp olive oil", "4 cups water"],
+  "recipeInstructions": [
+    {"@type": "HowToStep", "text": "Saute the garlic in the oil."},
+    {"@type": "HowToStep", "text": "Add water and simmer."}
+  ]
+}
+</script></head><body><h1>Simple Garlic Soup</h1></body></html>
+"""
+
+
+def test_jsonld_html_parses_deterministically_without_llm():
+    # Offline: scrape_html operates on the HTML string only — no fetch, no LLM.
+    scrape_html = pytest.importorskip("recipe_scrapers").scrape_html
+    scraper = scrape_html(_JSONLD_HTML, org_url="https://example.com/soup", wild_mode=True)
+    result = scraped_to_recipe_input(scraper, source_url="https://example.com/soup")
+
+    assert result.title == "Simple Garlic Soup"
+    assert result.source_type == SourceType.WEB
+    assert result.status == RecipeStatus.DRAFT
+    assert result.servings == 4
+    assert [i.name for i in result.ingredients] == [
+        "2 cloves garlic",
+        "1 tbsp olive oil",
+        "4 cups water",
+    ]
+    assert result.instructions_md == "Saute the garlic in the oil.\nAdd water and simmer."
+
+
+# --- html_to_text (the LLM-fallback page cleaner) ---
+
+
+def test_html_to_text_strips_chrome_and_keeps_visible_text():
+    html = """<html><head><style>.x{color:red}</style>
+    <script>var a = 1;</script></head>
+    <body><nav>Home</nav><h1>Garlic Soup</h1>
+    <p>2 cloves garlic</p><noscript>enable js</noscript></body></html>"""
+    text = html_to_text(html)
+
+    assert "Garlic Soup" in text
+    assert "2 cloves garlic" in text
+    assert "Home" in text  # nav text is kept; only script/style/noscript are dropped
+    assert "color:red" not in text
+    assert "var a" not in text
+    assert "enable js" not in text
+    # No blank lines survive the collapse.
+    assert "\n\n" not in text

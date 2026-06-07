@@ -131,3 +131,51 @@ class RecipeScrapersAdapter:
             raise ScrapeError(f"Could not parse a recipe from {url}: {exc}") from exc
 
         return scraped_to_recipe_input(scraper, source_url=url)
+
+    def fetch_page_text(self, url: str) -> str:
+        """Fetch a page and return its visible text (markup stripped).
+
+        Used only as the LLM fallback when deterministic scraping fails — we hand
+        this text to the extractor. Kept separate from `scrape` so the happy path
+        never pays for HTML→text cleaning. Raises ScrapeError on a fetch failure.
+        """
+        try:
+            import httpx
+        except ImportError as exc:  # pragma: no cover - import guard
+            raise ScrapeError("httpx is not installed.") from exc
+
+        try:
+            resp = httpx.get(
+                url,
+                follow_redirects=True,
+                timeout=self._timeout,
+                headers=_BROWSER_HEADERS,
+            )
+            resp.raise_for_status()
+        except Exception as exc:
+            raise ScrapeError(f"Could not fetch {url}: {exc}") from exc
+
+        return html_to_text(resp.text)
+
+
+def html_to_text(html: str) -> str:
+    """Reduce an HTML document to its visible text.
+
+    Prefers BeautifulSoup (a transitive recipe-scrapers dependency) to drop
+    script/style/nav chrome; falls back to a crude tag strip if it is somehow
+    unavailable. Pure and offline, so it is unit-tested directly.
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:  # pragma: no cover - fallback path
+        text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+        text = re.sub(r"(?s)<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "template", "svg"]):
+        tag.decompose()
+    # Collapse runs of blank lines so the LLM sees compact, readable text.
+    text = soup.get_text("\n")
+    lines = [line.strip() for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)

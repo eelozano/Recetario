@@ -60,8 +60,11 @@ def test_ingest_url_creates_draft_recipe(client):
     assert recipe["ingredients"][0]["name"] == "2 cloves garlic"
 
 
-def test_ingest_url_records_failure_on_scrape_error(client):
-    client.app.state.scraper_factory = lambda: _StubScraper(error="No recipe found")
+def test_ingest_url_records_friendly_failure_without_llm_fallback(client):
+    # conftest leaves the extractor disabled, so there's no LLM fallback. A scrape
+    # failure must surface a clean, user-facing message — not the library's
+    # internal parse error.
+    client.app.state.scraper_factory = lambda: _StubScraper(error="boom: no JSON-LD")
 
     resp = client.post("/ingestion/jobs", json={"url": "https://example.com/blog"})
     assert resp.status_code == 202
@@ -70,7 +73,10 @@ def test_ingest_url_records_failure_on_scrape_error(client):
     polled = client.get(f"/ingestion/jobs/{job_id}").json()
     assert polled["status"] == "failed"
     assert polled["result_recipe_id"] is None
-    assert "No recipe found" in polled["error"]
+    # Friendly, actionable copy — and the raw library error is not leaked.
+    assert "Couldn't read a recipe" in polled["error"]
+    assert "+ New recipe" in polled["error"]
+    assert "JSON-LD" not in polled["error"]
 
 
 def test_list_jobs_and_missing_job(client):

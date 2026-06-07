@@ -173,19 +173,35 @@ def _run_ingestion_job(
 
 
 class RunUrlIngestion:
-    """Execute a queued web job: scrape the URL → enrich → persist a draft."""
+    """Execute a queued web job, deterministic-first.
+
+    The happy path is pure `recipe-scrapers` (schema.org/JSON-LD) — fast, free,
+    and **no LLM call**, so importing a structured recipe works with no API keys.
+    The LLM is only a *fallback*: when deterministic scraping fails and an
+    extractor is configured, we fetch the page's plain text and let Claude parse
+    it. With no extractor we surface a clean, user-facing error instead.
+    """
+
+    # Shown when scraping fails and there's no LLM fallback available.
+    _NO_LLM_ERROR = (
+        "Couldn't read a recipe from this page automatically. Try a different "
+        'link, or use "+ New recipe" to enter it by hand.'
+    )
 
     def __init__(
         self,
         jobs: IngestionJobRepository,
         create_recipe: CreateRecipe,
         scraper: RecipeScraper,
-        enrich: EnrichDraftRecipe | None = None,
+        *,
+        extractor: LlmRecipeExtractor | None = None,
+        fetch_page_text: Callable[[str], str] | None = None,
     ) -> None:
         self._jobs = jobs
         self._create_recipe = create_recipe
         self._scraper = scraper
-        self._enrich = enrich
+        self._extractor = extractor
+        self._fetch_page_text = fetch_page_text
 
     def __call__(self, job_id: int) -> IngestionJob:
         return _run_ingestion_job(
@@ -193,10 +209,20 @@ class RunUrlIngestion:
         )
 
     def _produce(self, job: IngestionJob) -> RecipeInput:
-        draft = self._scraper.scrape(job.input_url)
-        if self._enrich is not None:
-            draft = self._enrich(draft)
-        return draft
+        try:
+            # Deterministic first: a successful scrape is used as-is, no LLM.
+            return self._scraper.scrape(job.input_url)
+        except ScrapeError as scrape_error:
+            return self._fallback(job.input_url, scrape_error)
+
+    def _fallback(self, url: str, scrape_error: ScrapeError) -> RecipeInput:
+        """LLM fallback for pages the deterministic scraper couldn't parse."""
+        if self._extractor is None or self._fetch_page_text is None:
+            # No Anthropic key configured — surface a clean, actionable message
+            # rather than the library's internal parse error.
+            raise ScrapeError(self._NO_LLM_ERROR) from scrape_error
+        page_text = self._fetch_page_text(url)
+        return self._extractor.extract_from_web(page_text, source_url=url)
 
 
 class RunVideoIngestion:

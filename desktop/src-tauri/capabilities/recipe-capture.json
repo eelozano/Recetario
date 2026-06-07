@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "recipe-capture",
+  "description": "Scopes the in-app recipe-import browser. The 'recipe-capture' window loads an arbitrary, untrusted recipe page, so its injected capture script is granted the bare minimum: emit a Tauri event (to hand the captured page HTML back to the app) and nothing else — no file, shell, window, or other command access. 'remote.urls' is required for the loaded remote origin's IPC to work at all; the only thing it can reach is core event emit.",
+  "windows": ["recipe-capture"],
+  "remote": {
+    "urls": ["http://*", "https://*"]
+  },
+  "permissions": ["core:event:allow-emit"]
+}

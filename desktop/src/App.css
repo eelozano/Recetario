@@ -235,46 +235,7 @@ body {
   color: var(--muted);
 }
 
-/* ---- Macro table ---- */
-.macro-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.macro-table th,
-.macro-table td {
-  padding: 9px 12px;
-  text-align: right;
-  border-bottom: 1px solid var(--border);
-}
-.macro-table th.left,
-.macro-table td.left {
-  text-align: left;
-}
-.macro-table thead th {
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 12px;
-}
-.macro-table tbody tr:hover {
-  background: var(--panel);
-}
-.macro-table tr.is-unresolved {
-  color: var(--muted);
-}
-.macro-table tfoot td {
-  border-top: 2px solid var(--border);
-  border-bottom: none;
-  padding-top: 12px;
-}
-.per-serving-row td {
-  color: var(--muted);
-  padding-top: 2px;
-}
-.macro-table__action {
-  text-align: right;
-  white-space: nowrap;
-}
+/* ---- Inline text buttons (recipe edit-form row controls) ---- */
 .link-btn {
   background: none;
   border: none;
@@ -286,74 +247,6 @@ body {
 }
 .link-btn:hover {
   text-decoration: underline;
-}
-
-/* ---- Ingredient → USDA link panel (inline in the breakdown table) ---- */
-.link-panel-row > td {
-  background: var(--panel);
-  padding: 12px;
-}
-.link-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.link-panel__search {
-  display: flex;
-  gap: 8px;
-}
-.link-panel__search input[type="text"] {
-  flex: 1;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  color: var(--text);
-  font-size: 13px;
-}
-.link-panel__results {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.link-panel__results li + li {
-  border-top: 1px solid var(--border);
-}
-.link-panel__results label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  cursor: pointer;
-}
-.link-panel__results label:hover {
-  background: var(--panel-2);
-}
-.link-panel__confirm {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.link-panel__confirm label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.link-panel__confirm input[type="number"] {
-  width: 120px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  color: var(--text);
-  font-size: 13px;
 }
 .link-btn--danger {
   color: var(--bad);
@@ -464,10 +357,6 @@ body {
   color: var(--warn);
   border-color: var(--warn);
 }
-.pill--warn {
-  color: var(--warn);
-  border-color: var(--warn);
-}
 .tag {
   font-size: 11px;
   background: var(--panel-2);
@@ -475,13 +364,7 @@ body {
   border-radius: 6px;
   padding: 1px 6px;
   color: var(--muted);
-  /* Keep multi-word badges (e.g. "not linked") on a single line. */
   white-space: nowrap;
-}
-.tag--warn {
-  margin-left: 8px;
-  color: var(--warn);
-  border-color: var(--warn);
 }
 
 .muted {

@@ -16,8 +16,24 @@ use tauri_plugin_shell::ShellExt;
 /// Holds the running sidecar so we can terminate it when the app exits.
 struct Backend(Mutex<Option<CommandChild>>);
 
+/// Kill the sidecar if it's still tracked. Idempotent: `take()` means a second
+/// call (e.g. ExitRequested then Exit) is a no-op.
+fn kill_backend(app_handle: &tauri::AppHandle) {
+    if let Some(child) = app_handle.state::<Backend>().0.lock().unwrap().take() {
+        let _ = child.kill();
+    }
+}
+
 fn spawn_backend(app: &tauri::AppHandle) -> Result<CommandChild, Box<dyn std::error::Error>> {
-    let (mut rx, child) = app.shell().sidecar("recetario-server")?.spawn()?;
+    // Hand the sidecar our PID so it can self-terminate if we die without a
+    // graceful exit (force-quit/crash). It watches this PID's liveness rather
+    // than its own parent, because PyInstaller's bootloader sits between us and
+    // the real Python process — see _resolve_watch_target in server.py.
+    let (mut rx, child) = app
+        .shell()
+        .sidecar("recetario-server")?
+        .env("RECETARIO_PARENT_PID", std::process::id().to_string())
+        .spawn()?;
 
     // Drain the sidecar's stdout/stderr to the host console for debugging.
     tauri::async_runtime::spawn(async move {
@@ -58,11 +74,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // On exit, kill the sidecar so no orphaned backend keeps the port.
-            if let RunEvent::ExitRequested { .. } = event {
-                if let Some(child) = app_handle.state::<Backend>().0.lock().unwrap().take() {
-                    let _ = child.kill();
-                }
+            // Kill the sidecar on every graceful teardown path so no orphaned
+            // backend keeps the port. ExitRequested fires when a quit is asked
+            // for; Exit fires as the process actually unwinds (e.g. the last
+            // window closing). We handle both — neither fires on a SIGKILL, which
+            // is why the sidecar also self-terminates via a parent-death watchdog.
+            match event {
+                RunEvent::ExitRequested { .. } | RunEvent::Exit => kill_backend(app_handle),
+                _ => {}
             }
         });
 }

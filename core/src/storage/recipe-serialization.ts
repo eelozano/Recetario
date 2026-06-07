@@ -10,7 +10,6 @@
  * default and never throws, so a hand-edited file can't crash the app.
  */
 import { Decimal } from "decimal.js";
-import yaml from "js-yaml";
 
 import {
   type Ingredient,
@@ -20,17 +19,19 @@ import {
   SourceType,
   type Tag,
 } from "../entities/recipe";
+import {
+  asDecimal,
+  asInt,
+  asRecord,
+  asString,
+  decimalToNumber as num,
+} from "./coerce";
 import { normalizeIngredientName } from "./normalize";
+import { dumpYaml, loadYaml } from "./yaml";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 // --- write -----------------------------------------------------------------
-
-/** A Decimal as a plain YAML number (re-parsed exactly via `new Decimal(String(n))`). */
-function num(value: Decimal | null | undefined): number | undefined {
-  if (value === null || value === undefined) return undefined;
-  return Number(value.toString());
-}
 
 function ingredientToData(line: RecipeIngredient): Record<string, unknown> {
   const out: Record<string, unknown> = { name: line.ingredient.name };
@@ -93,43 +94,12 @@ export function recipeToMarkdown(recipe: Recipe): string {
   if (recipe.createdAt) data.created_at = recipe.createdAt;
   if (recipe.updatedAt) data.updated_at = recipe.updatedAt;
 
-  const frontmatter = yaml.dump(data, { lineWidth: -1, sortKeys: false });
+  const frontmatter = dumpYaml(data);
   const body = (recipe.instructionsMd ?? "").trim();
   return `---\n${frontmatter}---\n${body ? `\n${body}\n` : ""}`;
 }
 
 // --- read (best-effort) ----------------------------------------------------
-
-function asString(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return undefined;
-}
-
-function asInt(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
-  if (typeof value === "string") {
-    const n = Number(value);
-    if (Number.isFinite(n)) return Math.trunc(n);
-  }
-  return undefined;
-}
-
-function asDecimal(value: unknown): Decimal | undefined {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== "number" && typeof value !== "string") return undefined;
-  try {
-    return new Decimal(String(value));
-  } catch {
-    return undefined;
-  }
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
 
 function sourceTypeOf(value: unknown): SourceType | undefined {
   const s = asString(value);
@@ -179,7 +149,7 @@ export function recipeFromMarkdown(content: string): Recipe {
   let body = content;
   if (match) {
     try {
-      data = asRecord(yaml.load(match[1]));
+      data = asRecord(loadYaml(match[1]));
     } catch {
       data = {};
     }

@@ -12,6 +12,7 @@ scraper with no network.
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from recetario.application.dto import RecipeIngredientInput, RecipeInput
@@ -19,6 +20,10 @@ from recetario.application.ports import ScrapeError
 from recetario.domain.entities import RecipeStatus, SourceType
 
 _SERVINGS_RE = re.compile(r"\d+")
+# First number (int or decimal) in a free-text nutrient value like "270 kcal".
+_NUTRIENT_NUM_RE = re.compile(r"[-+]?\d*\.?\d+")
+# 1 kcal = 4.184 kJ — used to coerce kilojoule energy values into our kcal field.
+_KJ_PER_KCAL = Decimal("4.184")
 
 
 def _safe(call: Any) -> Any:
@@ -47,6 +52,92 @@ def _instruction_steps(scraper: Any) -> list[str]:
     return []
 
 
+def _nutrient_number(value: Any) -> Decimal | None:
+    """Pull the leading number out of a free-text nutrient value ("310 mg" → 310)."""
+    if not isinstance(value, str):
+        return None
+    match = _NUTRIENT_NUM_RE.search(value)
+    if match is None:
+        return None
+    try:
+        return Decimal(match.group())
+    except InvalidOperation:
+        return None
+
+
+def _energy_kcal(value: Any) -> Decimal | None:
+    """Parse a schema.org `calories` value into kcal.
+
+    Values are usually "270 kcal"/"270 calories" (already kcal), but EU/AU sites
+    publish kilojoules ("1130 kJ"); storing that raw would be wrong by ~4×, so we
+    convert kJ → kcal rather than trust the bare number.
+    """
+    number = _nutrient_number(value)
+    if number is None:
+        return None
+    lowered = value.lower()
+    if "kj" in lowered or "kilojoule" in lowered:
+        return (number / _KJ_PER_KCAL).quantize(Decimal("0.1"))
+    return number
+
+
+def _mass_to(value: Any, *, target: str) -> Decimal | None:
+    """Parse a schema.org mass value (protein/fat/carbs/fiber/sodium) into `target`.
+
+    `target` is the app's canonical unit for the field — "g" for the macros, "mg"
+    for sodium. Sites split between e.g. "310 mg" and "0.31 g" for the same number,
+    so we read the value's own unit and normalize. An unrecognized/absent unit is
+    assumed to already be in `target` (the value is taken at face value).
+    """
+    number = _nutrient_number(value)
+    if number is None:
+        return None
+    lowered = value.lower()
+    if "mcg" in lowered or "µg" in lowered or "microgram" in lowered:
+        grams = number / Decimal(1_000_000)
+    elif "mg" in lowered or "milligram" in lowered:
+        grams = number / Decimal(1000)
+    elif "g" in lowered:  # gram(s) / "g"
+        grams = number
+    else:
+        return number  # no unit to normalize against — trust the number as-is
+    return grams if target == "g" else grams * Decimal(1000)
+
+
+# schema.org NutritionInformation key (lowercased) → (RecipeInput field, parser).
+_NUTRIENT_FIELDS: tuple[tuple[str, str, Any], ...] = (
+    ("calories", "calories_per_serving", _energy_kcal),
+    ("proteincontent", "protein_per_serving", lambda v: _mass_to(v, target="g")),
+    ("fatcontent", "fat_per_serving", lambda v: _mass_to(v, target="g")),
+    ("carbohydratecontent", "carbs_per_serving", lambda v: _mass_to(v, target="g")),
+    ("fibercontent", "fiber_per_serving", lambda v: _mass_to(v, target="g")),
+    ("sodiumcontent", "sodium_per_serving", lambda v: _mass_to(v, target="mg")),
+)
+
+
+def macros_from_nutrients(raw: Any) -> dict[str, Decimal]:
+    """Map a recipe-scrapers `nutrients()` dict to our per-serving macro fields.
+
+    schema.org `NutritionInformation` carries free-text values ("270 kcal",
+    "0.31 g", "310 mg"); we normalize each to the app's canonical unit (kcal, g,
+    g, g, g, mg). Every field is parsed independently and any miss is simply
+    omitted, so partial or junk nutrition never breaks the import — the draft just
+    lands with fewer (or no) macros pre-filled, exactly as before this feature.
+
+    Values are pre-filled estimates, not authoritative: the recipe stays a draft
+    the user reviews/edits/finalizes via the manual macro UI (#18).
+    """
+    if not isinstance(raw, dict):
+        return {}
+    lookup = {str(k).lower(): v for k, v in raw.items()}
+    macros: dict[str, Decimal] = {}
+    for key, field_name, parse in _NUTRIENT_FIELDS:
+        parsed = parse(lookup.get(key))
+        if parsed is not None:
+            macros[field_name] = parsed
+    return macros
+
+
 def scraped_to_recipe_input(scraper: Any, *, source_url: str | None) -> RecipeInput:
     """Map a recipe-scrapers scraper object into a draft RecipeInput.
 
@@ -70,6 +161,11 @@ def scraped_to_recipe_input(scraper: Any, *, source_url: str | None) -> RecipeIn
     # so the draft is reviewable, then the user (or Claude) refines it.
     ingredients = [RecipeIngredientInput(name=line, raw_text=line) for line in lines]
 
+    # Pre-fill per-serving macros from the page's published nutrition block when
+    # present (#35). Missing/unparseable nutrition leaves the fields unset, so the
+    # draft is identical to before for sites that don't publish it.
+    macros = macros_from_nutrients(_safe(getattr(scraper, "nutrients", lambda: None)))
+
     return RecipeInput(
         title=title or "Untitled recipe",
         source_url=source_url,
@@ -78,6 +174,7 @@ def scraped_to_recipe_input(scraper: Any, *, source_url: str | None) -> RecipeIn
         status=RecipeStatus.DRAFT,
         instructions_md=instructions_md,
         ingredients=ingredients,
+        **macros,
     )
 
 

@@ -1,5 +1,7 @@
 /** Public surface of the portable domain core. */
 
+export type { Id } from "./identity";
+
 export { MacroProfile } from "./value-objects/macro";
 export type { NutrientAmount } from "./value-objects/macro";
 

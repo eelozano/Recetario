@@ -5,12 +5,12 @@
  * that carry defaults in the Python dataclasses are optional here; the storage
  * layer (a later step) is responsible for supplying them on read.
  *
- * Identity is still `number` here to mirror the current backend during the port.
- * Architecture v2 moves to UUID strings when the flat-file storage layer lands
- * (see docs/architecture-v2-proposal.md §4); that change is scoped to the
- * storage step, not this domain port.
+ * Identity is a UUID string (`Id`) — see ../identity.ts. `usdaFdcId` is the one
+ * exception: it's an external USDA FoodData Central integer, not our identity.
  */
 import type { Decimal } from "decimal.js";
+
+import type { Id } from "../identity";
 
 export enum SourceType {
   WEB = "web",
@@ -25,14 +25,14 @@ export enum RecipeStatus {
 
 export interface Tag {
   name: string;
-  id?: number | null;
+  id?: Id | null;
 }
 
 /** A canonical, deduplicated ingredient in the user's catalog. */
 export interface Ingredient {
   name: string;
   normalizedName: string;
-  id?: number | null;
+  id?: Id | null;
   usdaFdcId?: number | null;
   defaultUnit?: string | null;
 }
@@ -51,12 +51,12 @@ export interface RecipeIngredient {
   usdaFdcId?: number | null;
   gramWeight?: Decimal | null;
   notes?: string | null;
-  id?: number | null;
+  id?: Id | null;
 }
 
 export interface Recipe {
   title: string;
-  id?: number | null;
+  id?: Id | null;
   description?: string | null;
   sourceUrl?: string | null;
   sourceType?: SourceType;

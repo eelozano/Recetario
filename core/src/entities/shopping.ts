@@ -7,6 +7,8 @@
  */
 import type { Decimal } from "decimal.js";
 
+import type { Id } from "../identity";
+
 export enum ShoppingListStatus {
   DRAFT = "draft",
   EXPORTED = "exported",
@@ -17,10 +19,10 @@ export interface ShoppingListItem {
   unit?: string | null;
   totalQuantity?: Decimal | null;
   checked?: boolean;
-  ingredientId?: number | null;
+  ingredientId?: Id | null;
   externalTaskId?: string | null;
-  sourceEventIds?: number[];
-  id?: number | null;
+  sourceEventIds?: Id[];
+  id?: Id | null;
 }
 
 export interface ShoppingList {
@@ -29,7 +31,7 @@ export interface ShoppingList {
   weekEnd: string;
   status?: ShoppingListStatus;
   items?: ShoppingListItem[];
-  id?: number | null;
+  id?: Id | null;
   /** External task-list id (e.g. Google Tasks) for idempotent re-export. */
   externalTasklistId?: string | null;
   generatedAt?: string | null;

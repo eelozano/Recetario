@@ -8,9 +8,9 @@ function d(
   name: string,
   qty: number | null,
   unit: string | null,
-  opts: { event?: number; ingredientId?: number | null } = {},
+  opts: { event?: string; ingredientId?: string | null } = {},
 ): ShoppingDemand {
-  const { event = 1, ingredientId = null } = opts;
+  const { event = "e1", ingredientId = null } = opts;
   return {
     ingredientName: name,
     normalizedName: name.trim().toLowerCase(),
@@ -24,13 +24,13 @@ function d(
 describe("ShoppingAggregator", () => {
   it("sums the same ingredient and unit", () => {
     const items = new ShoppingAggregator().aggregate([
-      d("Onion", 2, "pc", { event: 1 }),
-      d("Onion", 3, "pc", { event: 2 }),
+      d("Onion", 2, "pc", { event: "e1" }),
+      d("Onion", 3, "pc", { event: "e2" }),
     ]);
     expect(items.length).toBe(1);
     expect(items[0].ingredientName).toBe("Onion");
     expect(items[0].totalQuantity!.toString()).toBe("5");
-    expect(items[0].sourceEventIds).toEqual([1, 2]);
+    expect(items[0].sourceEventIds).toEqual(["e1", "e2"]);
   });
 
   it("keeps the same ingredient in different units separate", () => {
@@ -69,16 +69,16 @@ describe("ShoppingAggregator", () => {
   it("carries the first non-null ingredient id", () => {
     const items = new ShoppingAggregator().aggregate([
       d("Onion", 1, "pc", { ingredientId: null }),
-      d("Onion", 1, "pc", { ingredientId: 7 }),
+      d("Onion", 1, "pc", { ingredientId: "i7" }),
     ]);
-    expect(items[0].ingredientId).toBe(7);
+    expect(items[0].ingredientId).toBe("i7");
   });
 
   it("dedupes source event ids", () => {
     const items = new ShoppingAggregator().aggregate([
-      d("Onion", 1, "pc", { event: 5 }),
-      d("Onion", 1, "pc", { event: 5 }),
+      d("Onion", 1, "pc", { event: "e5" }),
+      d("Onion", 1, "pc", { event: "e5" }),
     ]);
-    expect(items[0].sourceEventIds).toEqual([5]);
+    expect(items[0].sourceEventIds).toEqual(["e5"]);
   });
 });

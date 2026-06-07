@@ -12,6 +12,7 @@
 import { Decimal } from "decimal.js";
 
 import type { Recipe, RecipeIngredient } from "../entities/recipe";
+import type { Id } from "../identity";
 import { MacroProfile, type NutrientAmount } from "../value-objects/macro";
 
 const HUNDRED = new Decimal(100);
@@ -58,7 +59,8 @@ export interface LineMacro {
   ingredientName: string;
   profile: MacroProfile;
   resolved: boolean;
-  recipeIngredientId: number | null;
+  recipeIngredientId: Id | null;
+  // External USDA FoodData Central id (an integer owned by USDA), not our identity.
   fdcId: number | null;
   gramWeight: Decimal | null;
 }

@@ -279,6 +279,11 @@ function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => vo
   const [err, setErr] = useState<string | null>(null);
 
   const anySet = MACRO_FIELDS.some((f) => recipe[f.key] != null);
+  // On a not-yet-finalized web import, any macros present came from the page's
+  // published nutrition (#35) — flag them as estimates to review. The note
+  // disappears once the draft is finalized ("review before finalizing").
+  const prefilledFromPage =
+    recipe.status === "draft" && recipe.source_type === "web" && anySet;
 
   function start() {
     setValues(macroValues(recipe));
@@ -327,6 +332,11 @@ function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => vo
             {anySet ? "Edit macros" : "Add macros"}
           </button>
         </div>
+        {prefilledFromPage && (
+          <p className="muted macro-entry__hint">
+            ⓘ Pre-filled from the recipe page — review before finalizing.
+          </p>
+        )}
         {!anySet && (
           <p className="muted">
             No macros recorded yet — add them by hand for quick per-serving tracking.

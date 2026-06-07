@@ -125,6 +125,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        // Flat-file data store (Architecture v2, step 3): the React data layer
+        // reads/writes recipes, calendar, and shopping files through this plugin,
+        // scoped to the data dir by capabilities/default.json.
+        .plugin(tauri_plugin_fs::init())
         .manage(Backend(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![open_recipe_capture])
         .setup(|app| {

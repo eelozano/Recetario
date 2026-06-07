@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  api,
-  type IntegrationStatus,
-  type ShoppingItem,
+  ShoppingListStatus,
   type ShoppingList,
-  type ShoppingListSummary,
-} from "../api/client";
+  type ShoppingListItem,
+} from "@recetario/core";
+import { getRepos } from "../data/repos";
+import { generateShoppingList } from "../data/queries";
 import { formatQuantity } from "../api/format";
 import { addDays, isoDate, startOfWeek, weekRangeLabel } from "../api/week";
 
@@ -16,27 +16,38 @@ function rangeLabel(start: string, end: string): string {
   return `${s} – ${e}`;
 }
 
+function counts(list: ShoppingList): { total: number; checked: number } {
+  const items = list.items ?? [];
+  return { total: items.length, checked: items.filter((i) => i.checked).length };
+}
+
 /* ---- Sidebar: generate control + saved lists --------------------------- */
 
 interface SidebarProps {
-  onSelect: (id: number) => void;
-  selectedId: number | null;
+  onSelect: (id: string) => void;
+  selectedId: string | null;
   reloadKey: number;
-  onGenerated: (id: number) => void;
+  onGenerated: (id: string) => void;
 }
 
 export function ShoppingSidebar({ onSelect, selectedId, reloadKey, onGenerated }: SidebarProps) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
-  const [lists, setLists] = useState<ShoppingListSummary[]>([]);
+  const [lists, setLists] = useState<ShoppingList[]>([]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const { data, error: apiError } = await api.GET("/shopping-lists", { params: {} });
-    if (apiError) setError("Could not load shopping lists.");
-    else {
+    try {
+      const { shopping } = await getRepos();
+      const data = await shopping.list();
+      // Newest week first, then name.
+      data.sort(
+        (a, b) => b.weekStart.localeCompare(a.weekStart) || a.name.localeCompare(b.name),
+      );
       setError(null);
-      setLists(data ?? []);
+      setLists(data);
+    } catch {
+      setError("Could not load shopping lists.");
     }
   }, []);
 
@@ -48,15 +59,17 @@ export function ShoppingSidebar({ onSelect, selectedId, reloadKey, onGenerated }
     if (generating) return;
     setGenerating(true);
     setError(null);
-    const { data, error: apiError } = await api.POST("/shopping-lists", {
-      body: { week_start: isoDate(weekStart), week_end: isoDate(addDays(weekStart, 6)) },
-    });
-    setGenerating(false);
-    if (apiError || !data) {
+    try {
+      const list = await generateShoppingList(
+        isoDate(weekStart),
+        isoDate(addDays(weekStart, 6)),
+      );
+      onGenerated(list.id!);
+    } catch {
       setError("Could not generate the list.");
-      return;
+    } finally {
+      setGenerating(false);
     }
-    onGenerated(data.id);
   }
 
   return (
@@ -82,22 +95,25 @@ export function ShoppingSidebar({ onSelect, selectedId, reloadKey, onGenerated }
         <p className="muted">No shopping lists yet. Generate one from a planned week.</p>
       ) : (
         <ul className="recipe-list">
-          {lists.map((l) => (
-            <li key={l.id}>
-              <button
-                className={`recipe-list__item ${l.id === selectedId ? "is-active" : ""}`}
-                onClick={() => onSelect(l.id)}
-              >
-                <span className="recipe-list__title">{l.name}</span>
-                <span className="recipe-list__meta">
-                  <span className="muted">{rangeLabel(l.week_start, l.week_end)}</span>
-                  <span className="pill">
-                    {l.checked_count}/{l.item_count}
+          {lists.map((l) => {
+            const { total, checked } = counts(l);
+            return (
+              <li key={l.id}>
+                <button
+                  className={`recipe-list__item ${l.id === selectedId ? "is-active" : ""}`}
+                  onClick={() => onSelect(l.id!)}
+                >
+                  <span className="recipe-list__title">{l.name}</span>
+                  <span className="recipe-list__meta">
+                    <span className="muted">{rangeLabel(l.weekStart, l.weekEnd)}</span>
+                    <span className="pill">
+                      {checked}/{total}
+                    </span>
                   </span>
-                </span>
-              </button>
-            </li>
-          ))}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -106,14 +122,14 @@ export function ShoppingSidebar({ onSelect, selectedId, reloadKey, onGenerated }
 
 /* ---- Main: the selected list's items with check-off -------------------- */
 
-function itemLabel(item: ShoppingItem): string {
-  const qty = formatQuantity(item.total_quantity);
+function itemLabel(item: ShoppingListItem): string {
+  const qty = item.totalQuantity != null ? formatQuantity(item.totalQuantity.toString()) : null;
   const amount = [qty, item.unit?.trim()].filter(Boolean).join(" ");
-  return amount ? `${item.ingredient_name} — ${amount}` : item.ingredient_name;
+  return amount ? `${item.ingredientName} — ${amount}` : item.ingredientName;
 }
 
 interface DetailProps {
-  listId: number;
+  listId: string;
   /** After a check-off, so the sidebar counts refresh (selection stays). */
   onChanged: () => void;
   /** After deletion, so the parent clears the selection. */
@@ -124,124 +140,64 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
   const [list, setList] = useState<ShoppingList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [gtask, setGtask] = useState<IntegrationStatus | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
-      setExportNote(null);
-      const { data, error: apiError } = await api.GET("/shopping-lists/{list_id}", {
-        params: { path: { list_id: listId } },
-      });
-      if (!active) return;
-      if (apiError || !data) setError("Could not load this shopping list.");
-      else {
-        setError(null);
+      try {
+        const { shopping } = await getRepos();
+        const data = await shopping.getById(listId);
+        if (!active) return;
         setList(data);
+        if (!data) setError("Could not load this shopping list.");
+        else setError(null);
+      } catch {
+        if (active) setError("Could not load this shopping list.");
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
     })();
     return () => {
       active = false;
     };
   }, [listId]);
 
-  // Google Tasks connection status (drives the export button's label/availability).
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const { data } = await api.GET("/integrations/google-tasks", { params: {} });
-      if (active && data) setGtask(data);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [listId]);
-
-  async function exportToTasks() {
-    if (!list || exporting) return;
-    setExporting(true);
-    setExportNote(null);
-    setError(null);
-
-    // First-time: run the OAuth consent (opens a browser on this machine).
-    if (gtask && !gtask.connected) {
-      setExportNote("Authorize Recetario in the browser window that just opened…");
-      const { data, error: connectError } = await api.POST(
-        "/integrations/google-tasks/connect",
-        { params: {} },
-      );
-      if (connectError || !data?.connected) {
-        setExporting(false);
-        setExportNote(null);
-        setError("Could not connect to Google Tasks.");
-        return;
-      }
-      setGtask(data);
-    }
-
-    const { data, error: apiError } = await api.POST("/shopping-lists/{list_id}/export", {
-      params: { path: { list_id: list.id } },
-    });
-    setExporting(false);
-    if (apiError || !data) {
-      setError("Export failed. Please try again.");
-      return;
-    }
-    setList(data);
-    setExportNote(`Exported ${data.items.length} items to Google Tasks ✓`);
-    onChanged();
-  }
-
-  async function toggle(item: ShoppingItem) {
+  // Toggle by index: file-backed items have no stable id, and the whole list is
+  // rewritten on any change anyway.
+  async function toggle(index: number) {
     if (!list) return;
-    const next = !item.checked;
-    // Optimistic update; revert on failure.
-    setList({
-      ...list,
-      items: list.items.map((i) => (i.id === item.id ? { ...i, checked: next } : i)),
-    });
-    const { error: apiError } = await api.PATCH("/shopping-lists/{list_id}/items/{item_id}", {
-      params: { path: { list_id: list.id, item_id: item.id } },
-      body: { checked: next },
-    });
-    if (apiError) {
-      setList({
-        ...list,
-        items: list.items.map((i) => (i.id === item.id ? { ...i, checked: item.checked } : i)),
-      });
-    } else {
+    const items = list.items ?? [];
+    const next = { ...list, items: items.map((it, i) => (i === index ? { ...it, checked: !it.checked } : it)) };
+    setList(next); // optimistic
+    try {
+      const { shopping } = await getRepos();
+      await shopping.update(next);
       onChanged(); // refresh sidebar counts
+    } catch {
+      setList(list); // revert
     }
   }
 
   async function remove() {
     if (!list) return;
-    const { error: apiError } = await api.DELETE("/shopping-lists/{list_id}", {
-      params: { path: { list_id: list.id } },
-    });
-    if (!apiError) onDeleted();
+    try {
+      const { shopping } = await getRepos();
+      await shopping.delete(list.id!);
+      onDeleted();
+    } catch {
+      setError("Could not delete this list.");
+    }
   }
 
   if (loading) return <p className="muted">Loading…</p>;
   if (error) return <p className="error">{error}</p>;
   if (!list) return null;
 
-  const checked = list.items.filter((i) => i.checked).length;
-  const total = list.items.length;
+  const items = list.items ?? [];
+  const { total, checked } = counts(list);
   const pct = total ? Math.round((checked / total) * 100) : 0;
-  const exported = list.status === "exported";
-  const canExport = total > 0 && gtask?.client_configured !== false;
-  const exportLabel = exporting
-    ? "Exporting…"
-    : gtask && !gtask.connected
-      ? "Connect Google Tasks & export"
-      : exported
-        ? "Re-export to Google Tasks"
-        : "Export to Google Tasks";
+  const exported = list.status === ShoppingListStatus.EXPORTED;
 
   return (
     <div className="shop-detail">
@@ -249,36 +205,21 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
         <div>
           <h1>{list.name}</h1>
           <p className="detail__meta muted">
-            {rangeLabel(list.week_start, list.week_end)} · {checked}/{total} checked
+            {rangeLabel(list.weekStart, list.weekEnd)} · {checked}/{total} checked
             {exported && <span className="pill pill--finalized">exported</span>}
           </p>
         </div>
         <div className="shop-detail__actions">
-          <button
-            className="btn btn--accent"
-            onClick={exportToTasks}
-            disabled={!canExport || exporting}
-            title={
-              gtask?.client_configured === false
-                ? "Add your Google client-secret JSON to ~/.recetario to enable export"
-                : "Send this list to Google Tasks"
-            }
-          >
-            {exportLabel}
-          </button>
           <button className="btn" onClick={remove} title="Delete this list">
             Delete
           </button>
         </div>
       </header>
 
-      {gtask?.client_configured === false && (
-        <p className="muted shop-detail__hint">
-          To enable Google Tasks export, drop your OAuth client-secret JSON at{" "}
-          <code>~/.recetario/google_client_secret.json</code>.
-        </p>
-      )}
-      {exportNote && <p className="import__ok">{exportNote}</p>}
+      <p className="muted shop-detail__hint">
+        Google Tasks export returns once the ingestion/export helper is wired back up
+        in a later step.
+      </p>
 
       {total > 0 && (
         <div className="progress">
@@ -293,14 +234,10 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
         </p>
       ) : (
         <ul className="shop-items">
-          {list.items.map((item) => (
-            <li key={item.id} className={`shop-item ${item.checked ? "is-checked" : ""}`}>
+          {items.map((item, i) => (
+            <li key={i} className={`shop-item ${item.checked ? "is-checked" : ""}`}>
               <label className="shop-item__label">
-                <input
-                  type="checkbox"
-                  checked={item.checked}
-                  onChange={() => toggle(item)}
-                />
+                <input type="checkbox" checked={item.checked ?? false} onChange={() => toggle(i)} />
                 <span>{itemLabel(item)}</span>
               </label>
             </li>

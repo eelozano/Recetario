@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { api, type MacroBreakdown, type RecipeOut } from "../api/client";
-import type { paths } from "../api/schema";
+import { Decimal } from "decimal.js";
+import {
+  normalizeIngredientName,
+  RecipeStatus,
+  SourceType,
+  type Recipe,
+  type RecipeIngredient,
+} from "@recetario/core";
+import { getRepos } from "../data/repos";
+import { profileToStrings, recipeMacros } from "../data/queries";
 import {
   formatAmount,
   formatQuantity,
@@ -10,47 +18,8 @@ import {
   orderedMacroKeys,
 } from "../api/format";
 
-type IngredientLine = RecipeOut["ingredients"][number];
-type RecipeUpdateBody = NonNullable<
-  paths["/recipes/{recipe_id}"]["put"]["requestBody"]
->["content"]["application/json"];
-
-/** Round-trip a loaded recipe back into the PUT body, applying field overrides. */
-function toUpdateBody(
-  recipe: RecipeOut,
-  overrides: Partial<RecipeUpdateBody> = {},
-): RecipeUpdateBody {
-  return {
-    title: recipe.title,
-    description: recipe.description,
-    source_url: recipe.source_url,
-    source_type: recipe.source_type,
-    servings: recipe.servings,
-    rating: recipe.rating,
-    status: recipe.status,
-    instructions_md: recipe.instructions_md,
-    calories_per_serving: recipe.calories_per_serving,
-    protein_per_serving: recipe.protein_per_serving,
-    fat_per_serving: recipe.fat_per_serving,
-    carbs_per_serving: recipe.carbs_per_serving,
-    fiber_per_serving: recipe.fiber_per_serving,
-    sodium_per_serving: recipe.sodium_per_serving,
-    ingredients: recipe.ingredients.map((l) => ({
-      name: l.name,
-      quantity: l.quantity,
-      unit: l.unit,
-      raw_text: l.raw_text,
-      notes: l.notes,
-      usda_fdc_id: l.usda_fdc_id,
-      gram_weight: l.gram_weight,
-    })),
-    tags: recipe.tags.map((t) => t.name),
-    ...overrides,
-  };
-}
-
 interface Props {
-  recipeId: number;
+  recipeId: string;
   /** Notify the parent when the recipe changes (e.g. finalized) to refresh lists. */
   onChanged?: () => void;
   /** Notify the parent after this recipe is deleted, so it can clear the selection. */
@@ -60,11 +29,11 @@ interface Props {
 /**
  * Recipe detail: ingredients, directions, and hand-entered per-serving macros
  * (with the resulting totals/per-serving cards). For imported drafts it also
- * offers the review → finalize step.
+ * offers the review → finalize step. Reads and writes the recipe's flat `.md`
+ * file directly through the core RecipeRepository (Architecture v2, step 3).
  */
 export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
-  const [recipe, setRecipe] = useState<RecipeOut | null>(null);
-  const [macros, setMacros] = useState<MacroBreakdown | null>(null);
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // Bumped after a mutation (finalize) to reload this view in place.
@@ -83,19 +52,17 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
     (async () => {
       setLoading(true);
       setError(null);
-      const params = { params: { path: { recipe_id: recipeId } } };
-      const [recipeRes, macroRes] = await Promise.all([
-        api.GET("/recipes/{recipe_id}", params),
-        api.GET("/recipes/{recipe_id}/macros", params),
-      ]);
-      if (!active) return;
-      if (recipeRes.error || macroRes.error) {
-        setError("Could not load this recipe");
-      } else {
-        setRecipe(recipeRes.data ?? null);
-        setMacros(macroRes.data ?? null);
+      try {
+        const { recipes } = await getRepos();
+        const data = await recipes.getById(recipeId);
+        if (!active) return;
+        setRecipe(data);
+        if (!data) setError("Could not load this recipe");
+      } catch {
+        if (active) setError("Could not load this recipe");
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
     })();
     return () => {
       active = false;
@@ -106,33 +73,31 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
     if (!recipe || finalizing) return;
     setFinalizing(true);
     setError(null);
-    const { error: apiError } = await api.PUT("/recipes/{recipe_id}", {
-      params: { path: { recipe_id: recipe.id } },
-      body: toUpdateBody(recipe, { status: "finalized" }),
-    });
-    setFinalizing(false);
-    if (apiError) {
+    try {
+      const { recipes } = await getRepos();
+      await recipes.update({ ...recipe, status: RecipeStatus.FINALIZED });
+      setVersion((v) => v + 1);
+      onChanged?.();
+    } catch {
       setError("Could not finalize this recipe.");
-      return;
+    } finally {
+      setFinalizing(false);
     }
-    setVersion((v) => v + 1);
-    onChanged?.();
   }
 
   async function remove() {
     if (!recipe || deleting) return;
     setDeleting(true);
     setError(null);
-    const { error: apiError } = await api.DELETE("/recipes/{recipe_id}", {
-      params: { path: { recipe_id: recipe.id } },
-    });
-    if (apiError) {
+    try {
+      const { recipes } = await getRepos();
+      await recipes.delete(recipe.id!);
+      onDeleted?.();
+    } catch {
       setDeleting(false);
       setConfirmingDelete(false);
       setError("Could not delete this recipe.");
-      return;
     }
-    onDeleted?.();
   }
 
   // Reload recipe + macros in place after an edit, and refresh the parent list.
@@ -143,7 +108,7 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
 
   if (loading) return <p className="muted">Loading…</p>;
   if (error && !recipe) return <p className="error">{error}</p>;
-  if (!recipe || !macros) return null;
+  if (!recipe) return null;
 
   if (editing) {
     return (
@@ -158,9 +123,12 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
     );
   }
 
+  const macros = recipeMacros(recipe);
+  const totals = profileToStrings(macros.totals);
+  const perServing = macros.perServing ? profileToStrings(macros.perServing) : null;
   // Columns come from whichever macros the recipe actually accumulated.
-  const columns = orderedMacroKeys(Object.keys(macros.totals));
-  const isDraft = recipe.status === "draft";
+  const columns = orderedMacroKeys(Object.keys(totals));
+  const isDraft = recipe.status === RecipeStatus.DRAFT;
 
   return (
     <div className="detail">
@@ -201,16 +169,16 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
         <div className="detail__meta">
           <span className={`pill pill--${recipe.status}`}>{recipe.status}</span>
           {recipe.servings != null && <span className="muted">{recipe.servings} servings</span>}
-          {recipe.source_url && (
+          {recipe.sourceUrl && (
             // In the Tauri webview a plain target="_blank" link is a no-op — the
             // shell intercepts navigation. Hand the URL to the system browser via
             // the opener plugin. The href is kept for hover/right-click affordance.
             <a
               className="detail__source"
-              href={recipe.source_url}
+              href={recipe.sourceUrl}
               onClick={(e) => {
                 e.preventDefault();
-                void openUrl(recipe.source_url!);
+                void openUrl(recipe.sourceUrl!);
               }}
             >
               source ↗
@@ -236,54 +204,56 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
       )}
 
       {/* Cooking content first; the entered macros and resulting totals follow. */}
-      <IngredientList ingredients={recipe.ingredients} />
+      <IngredientList ingredients={recipe.ingredients ?? []} />
 
-      <Directions instructionsMd={recipe.instructions_md} />
+      <Directions instructionsMd={recipe.instructionsMd ?? null} />
 
       <MacroEditor recipe={recipe} onSaved={reload} />
 
-      <SummaryCards macros={macros} columns={columns} />
+      <SummaryCards totals={totals} perServing={perServing} columns={columns} />
     </div>
   );
 }
 
-// The six per-serving macros the user can record by hand (#18). Keys match the
-// recipe schema; units mirror the canonical macro table in api/format.ts.
+// The six per-serving macros the user can record by hand (#18). Fields map to the
+// core Recipe entity; units mirror the canonical macro table in api/format.ts.
 const MACRO_FIELDS = [
-  { key: "calories_per_serving", label: "Calories", unit: "kcal" },
-  { key: "protein_per_serving", label: "Protein", unit: "g" },
-  { key: "fat_per_serving", label: "Fat", unit: "g" },
-  { key: "carbs_per_serving", label: "Carbs", unit: "g" },
-  { key: "fiber_per_serving", label: "Fiber", unit: "g" },
-  { key: "sodium_per_serving", label: "Sodium", unit: "mg" },
+  { field: "caloriesPerServing", label: "Calories", unit: "kcal" },
+  { field: "proteinPerServing", label: "Protein", unit: "g" },
+  { field: "fatPerServing", label: "Fat", unit: "g" },
+  { field: "carbsPerServing", label: "Carbs", unit: "g" },
+  { field: "fiberPerServing", label: "Fiber", unit: "g" },
+  { field: "sodiumPerServing", label: "Sodium", unit: "mg" },
 ] as const;
 
-type MacroFieldKey = (typeof MACRO_FIELDS)[number]["key"];
+type MacroField = (typeof MACRO_FIELDS)[number]["field"];
 
-function macroValues(recipe: RecipeOut): Record<MacroFieldKey, string> {
+function macroValues(recipe: Recipe): Record<MacroField, string> {
   return Object.fromEntries(
-    MACRO_FIELDS.map((f) => [f.key, recipe[f.key] != null ? String(recipe[f.key]) : ""]),
-  ) as Record<MacroFieldKey, string>;
+    MACRO_FIELDS.map((f) => {
+      const value = recipe[f.field] as Decimal | null | undefined;
+      return [f.field, value != null ? value.toString() : ""];
+    }),
+  ) as Record<MacroField, string>;
 }
 
 /**
  * Inline editor for the recipe's hand-entered per-serving macros — the primary
- * macro workflow (#18). Saves via the same full-recipe PUT (toUpdateBody carries
- * every other field through unchanged), then asks the parent to reload so the
- * summary cards reflect the new numbers.
+ * macro workflow (#18). Rewrites the recipe file with the new per-serving fields,
+ * then asks the parent to reload so the summary cards reflect the new numbers.
  */
-function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => void }) {
+function MacroEditor({ recipe, onSaved }: { recipe: Recipe; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
-  const [values, setValues] = useState<Record<MacroFieldKey, string>>(() => macroValues(recipe));
+  const [values, setValues] = useState<Record<MacroField, string>>(() => macroValues(recipe));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const anySet = MACRO_FIELDS.some((f) => recipe[f.key] != null);
+  const anySet = MACRO_FIELDS.some((f) => recipe[f.field] != null);
   // On a not-yet-finalized web import, any macros present came from the page's
   // published nutrition (#35) — flag them as estimates to review. The note
   // disappears once the draft is finalized ("review before finalizing").
   const prefilledFromPage =
-    recipe.status === "draft" && recipe.source_type === "web" && anySet;
+    recipe.status === RecipeStatus.DRAFT && recipe.sourceType === SourceType.WEB && anySet;
 
   function start() {
     setValues(macroValues(recipe));
@@ -293,11 +263,11 @@ function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => vo
 
   async function save() {
     if (saving) return;
-    const overrides: Partial<RecipeUpdateBody> = {};
+    const overrides: Partial<Recipe> = {};
     for (const f of MACRO_FIELDS) {
-      const raw = values[f.key].trim();
+      const raw = values[f.field].trim();
       if (raw === "") {
-        overrides[f.key] = null;
+        overrides[f.field] = null;
         continue;
       }
       const n = Number(raw);
@@ -305,22 +275,21 @@ function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => vo
         setErr(`${f.label} must be a number of 0 or more (or left blank).`);
         return;
       }
-      overrides[f.key] = raw;
+      overrides[f.field] = new Decimal(raw);
     }
 
     setSaving(true);
     setErr(null);
-    const { error: apiError } = await api.PUT("/recipes/{recipe_id}", {
-      params: { path: { recipe_id: recipe.id } },
-      body: toUpdateBody(recipe, overrides),
-    });
-    setSaving(false);
-    if (apiError) {
+    try {
+      const { recipes } = await getRepos();
+      await recipes.update({ ...recipe, ...overrides });
+      setEditing(false);
+      onSaved();
+    } catch {
       setErr("Could not save macros.");
-      return;
+    } finally {
+      setSaving(false);
     }
-    setEditing(false);
-    onSaved();
   }
 
   if (!editing) {
@@ -354,7 +323,7 @@ function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => vo
       {err && <p className="error">{err}</p>}
       <div className="macro-entry__grid">
         {MACRO_FIELDS.map((f) => (
-          <label key={f.key} className="macro-entry__field">
+          <label key={f.field} className="macro-entry__field">
             <span>
               {f.label} <span className="unit">({f.unit})</span>
             </span>
@@ -363,8 +332,8 @@ function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => vo
               min="0"
               step="any"
               inputMode="decimal"
-              value={values[f.key]}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              value={values[f.field]}
+              onChange={(e) => setValues((v) => ({ ...v, [f.field]: e.target.value }))}
               placeholder="—"
             />
           </label>
@@ -396,22 +365,22 @@ type EditRow = {
   // provenance or any legacy USDA link/gram weight still stored on the row.
   rawText: string | null;
   usdaFdcId: number | null;
-  gramWeight: string | null;
+  gramWeight: Decimal | null;
 };
 
 let rowSeq = 0;
 const nextKey = () => `row-${rowSeq++}`;
 
-function toEditRow(line: IngredientLine): EditRow {
+function toEditRow(line: RecipeIngredient): EditRow {
   return {
     key: nextKey(),
-    name: line.name ?? "",
-    quantity: line.quantity != null ? String(line.quantity) : "",
+    name: line.ingredient.name ?? "",
+    quantity: line.quantity != null ? line.quantity.toString() : "",
     unit: line.unit ?? "",
     notes: line.notes ?? "",
-    rawText: line.raw_text ?? null,
-    usdaFdcId: line.usda_fdc_id ?? null,
-    gramWeight: line.gram_weight != null ? String(line.gram_weight) : null,
+    rawText: line.rawText ?? null,
+    usdaFdcId: line.usdaFdcId ?? line.ingredient.usdaFdcId ?? null,
+    gramWeight: line.gramWeight ?? null,
   };
 }
 
@@ -428,17 +397,28 @@ function blankRow(): EditRow {
   };
 }
 
+/** Parse a quantity string into a Decimal, or null if blank/unparseable. */
+function parseQuantity(raw: string): Decimal | null {
+  const s = raw.trim();
+  if (!s) return null;
+  try {
+    return new Decimal(s);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Edit mode for a recipe: title, description, servings, ingredient rows (add /
- * remove / reorder / retype), and directions. Saves the whole recipe via PUT
- * (toUpdateBody round-trips the full shape, including any stored macro fields).
+ * remove / reorder / retype), and directions. Rewrites the whole recipe file via
+ * the repository (preserving stored macros, tags, source, and legacy USDA data).
  */
 function RecipeEditForm({
   recipe,
   onSaved,
   onCancel,
 }: {
-  recipe: RecipeOut;
+  recipe: Recipe;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -447,9 +427,11 @@ function RecipeEditForm({
   const [servings, setServings] = useState(
     recipe.servings != null ? String(recipe.servings) : "",
   );
-  const [instructions, setInstructions] = useState(recipe.instructions_md ?? "");
+  const [instructions, setInstructions] = useState(recipe.instructionsMd ?? "");
   const [rows, setRows] = useState<EditRow[]>(() =>
-    [...recipe.ingredients].sort((a, b) => a.position - b.position).map(toEditRow),
+    [...(recipe.ingredients ?? [])]
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map(toEditRow),
   );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -489,31 +471,39 @@ function RecipeEditForm({
 
     setSaving(true);
     setErr(null);
-    const body = toUpdateBody(recipe, {
-      title: title.trim(),
-      description: description.trim() || null,
-      servings: servingsNum,
-      instructions_md: instructions.trim() || null,
-      ingredients: rows.map((r) => ({
-        name: r.name.trim(),
-        quantity: r.quantity.trim() || null,
+    const ingredients: RecipeIngredient[] = rows.map((r, i) => {
+      const name = r.name.trim();
+      return {
+        ingredient: {
+          name,
+          normalizedName: normalizeIngredientName(name),
+          usdaFdcId: r.usdaFdcId,
+        },
+        quantity: parseQuantity(r.quantity),
         unit: r.unit.trim() || null,
-        raw_text: r.rawText,
+        rawText: r.rawText,
         notes: r.notes.trim() || null,
-        usda_fdc_id: r.usdaFdcId,
-        gram_weight: r.gramWeight,
-      })),
+        usdaFdcId: r.usdaFdcId,
+        gramWeight: r.gramWeight,
+        position: i,
+      };
     });
-    const { error: apiError } = await api.PUT("/recipes/{recipe_id}", {
-      params: { path: { recipe_id: recipe.id } },
-      body,
-    });
-    setSaving(false);
-    if (apiError) {
+    try {
+      const { recipes } = await getRepos();
+      await recipes.update({
+        ...recipe,
+        title: title.trim(),
+        description: description.trim() || null,
+        servings: servingsNum,
+        instructionsMd: instructions.trim() || null,
+        ingredients,
+      });
+      onSaved();
+    } catch {
       setErr("Could not save changes.");
-      return;
+    } finally {
+      setSaving(false);
     }
-    onSaved();
   }
 
   return (
@@ -646,21 +636,21 @@ function RecipeEditForm({
 }
 
 /** Compose a human-readable line: "3 pc Yellow onion (finely sliced)". */
-function ingredientText(line: IngredientLine): string {
-  const qty = formatQuantity(line.quantity);
-  const parts = [qty, line.unit?.trim(), line.name?.trim()].filter(
+function ingredientText(line: RecipeIngredient): string {
+  const qty = line.quantity != null ? formatQuantity(line.quantity.toString()) : null;
+  const parts = [qty, line.unit?.trim(), line.ingredient.name?.trim()].filter(
     (p): p is string => Boolean(p && p.length),
   );
   let text = parts.join(" ").trim();
   // Fall back to the originally parsed string if we have nothing structured.
-  if (!text) text = line.raw_text?.trim() ?? "";
+  if (!text) text = line.rawText?.trim() ?? "";
   if (line.notes?.trim()) text += ` (${line.notes.trim()})`;
   return text;
 }
 
-function IngredientList({ ingredients }: { ingredients: IngredientLine[] }) {
+function IngredientList({ ingredients }: { ingredients: RecipeIngredient[] }) {
   if (!ingredients.length) return null;
-  const ordered = [...ingredients].sort((a, b) => a.position - b.position);
+  const ordered = [...ingredients].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   return (
     <section>
       <h2 className="section-title">Ingredients</h2>
@@ -705,19 +695,19 @@ function parseSteps(md: string | null | undefined): string[] {
 }
 
 function SummaryCards({
-  macros,
+  totals,
+  perServing,
   columns,
 }: {
-  macros: MacroBreakdown;
+  totals: Record<string, string>;
+  perServing: Record<string, string> | null;
   columns: string[];
 }) {
   if (columns.length === 0) return null;
   return (
     <section className="cards">
-      <MacroCard title="Recipe total" amounts={macros.totals} columns={columns} />
-      {macros.per_serving && (
-        <MacroCard title="Per serving" amounts={macros.per_serving} columns={columns} />
-      )}
+      <MacroCard title="Recipe total" amounts={totals} columns={columns} />
+      {perServing && <MacroCard title="Per serving" amounts={perServing} columns={columns} />}
     </section>
   );
 }

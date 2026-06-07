@@ -56,15 +56,15 @@ jobs:
       - name: Typecheck
         run: npm run typecheck --workspace @recetario/core
 
+      - name: Build (emit dist/ consumed by the desktop shell)
+        run: npm run build --workspace @recetario/core
+
       - name: Test
         run: npm test --workspace @recetario/core
 
   frontend:
     name: Frontend typecheck + build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
 
@@ -72,13 +72,19 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      # desktop is now a member of the root npm workspace and depends on the
+      # built @recetario/core, so install at the root (symlinks the core) and
+      # build the core's dist before the UI consumes it.
+      - name: Install workspace deps
         run: npm ci
+
+      - name: Build core
+        run: npm run build --workspace @recetario/core
 
       # `npm run build` is `tsc && vite build` — catches type errors and a broken
       # build. The Rust/Tauri shell is not built here (no native toolchain needed
       # to validate the web UI); packaging is verified manually before release.
       - name: Typecheck and build UI
-        run: npm run build
+        run: npm run build --workspace desktop

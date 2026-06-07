@@ -13,10 +13,10 @@ type View = "recipes" | "calendar" | "shopping" | "settings";
 
 function App() {
   const [view, setView] = useState<View>("recipes");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   // When true (in the recipes view), the main panel shows the manual-create form.
   const [creating, setCreating] = useState(false);
-  const [selectedShoppingId, setSelectedShoppingId] = useState<number | null>(null);
+  const [selectedShoppingId, setSelectedShoppingId] = useState<string | null>(null);
   // Bumped whenever the recipe set changes (import, finalize) to reload the list
   // and the calendar's recipe picker.
   const [listVersion, setListVersion] = useState(0);

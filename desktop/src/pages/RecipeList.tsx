@@ -35,7 +35,12 @@ export function RecipeList({ onSelect, selectedId, reloadKey }: Props) {
   if (loading) return <p className="muted">Loading recipes…</p>;
   if (error) return <p className="error">{error}</p>;
   if (recipes.length === 0)
-    return <p className="muted">No recipes yet. Create one via the API to see it here.</p>;
+    return (
+      <p className="muted">
+        No recipes yet. Click <strong>+ New recipe</strong> to add one by hand, or
+        paste a recipe link above to import one.
+      </p>
+    );
 
   return (
     <ul className="recipe-list">

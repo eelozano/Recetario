@@ -12,6 +12,11 @@ __pycache__/
 *.db
 .env
 .recetario/
+# Default flat-file data dir ($DOCUMENT/Recetario/data). In dev this repo lives
+# at ~/Documents/Recetario, so the app's default store lands at ./data — keep the
+# runtime recipes/calendar/shopping out of git. Anchored so desktop/src/data/ (the
+# composition root) is NOT ignored.
+/data/
 
 # Node / Tauri
 node_modules/

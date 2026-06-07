@@ -195,3 +195,44 @@ twice):
   recipe-scrapers/yt-dlp moat and the test suite as spec.
 
 Current lean (author + Claude): **Path B**, contingent on Q1=TypeScript.
+
+## 10. Step-3 design decisions (ACCEPTED 2026-06-07)
+
+Wiring `desktop/` to the TS core. Three decisions locked:
+
+- **D1. Import/video/from-HTML ingestion + Google Tasks export: STUB OUT** during
+  step 3. All data ops go through files; the Python sidecar is removed from Tauri
+  boot. Import + export controls are disabled/hidden ("returns next step"); the
+  Settings page (BYO keys, only consumed by the Python helper) is likewise disabled
+  until step 4. Rationale: a naive hybrid is broken — import would write to the
+  backend's SQLite, which the file-backed UI no longer reads, so imports would
+  silently vanish. Stubbing keeps a single data path and the cleanest diff. The file
+  store starts EMPTY (real data arrives via the step-6 migration); test step 3 with
+  manual/hand-written recipes. The PyInstaller binary stays in-repo for step-4 reuse.
+- **D2. Data dir default: `~/Documents/Recetario/data/`** (one level below the repo
+  root, which itself lives at `~/Documents/Recetario` in dev — avoids scattering
+  `recipes/`, `meal-calendar/`, `shopping-lists/`, `config.json` into the git repo).
+  Resolved via the Tauri path API ($DOCUMENT/Recetario/data). The step-5 folder
+  picker overrides it.
+- **D3. Core consumption: BUILD core to `dist/`** (tsc → JS + .d.ts); package
+  `exports` point at `dist` for consumers (desktop/Vite/Tauri, later Metro), while
+  vitest keeps importing `src/`. CI core job gains a build step. Avoids bundler
+  config to transpile a dep's `.ts` source; same shape mobile will want.
+
+**Mechanical (no decision needed):** Tauri `FileSystem` adapter = `@tauri-apps/plugin-fs`
++ scoped capability for the data dir; composition root in `desktop/src/data/repos.ts`
+(resolve data dir → build adapter → export the three repos as singletons); pages swap
+`await api.GET(...)` for `await repo.method(...)`, loading/error states unchanged; the
+week-view macro rollup is assembled client-side (listRange → load recipes →
+MacroCalculator per-serving → MealPlanAggregator). No core logic changes in step 3.
+
+**PR slicing (mirrors 2a/2b/2c):**
+- **3a — plumbing:** core dist build + `exports` repoint + CI; `desktop` joins the
+  workspace and depends on `@recetario/core`; `@tauri-apps/plugin-fs` + capability;
+  `TauriFileSystem` adapter + `data/repos.ts` composition root. No page swaps yet.
+- **3b — recipes:** swap RecipeList / RecipeDetail / NewRecipe to `RecipeRepository`
+  + in-core `MacroCalculator`. First visible file-backed feature (.md files appear
+  under the data dir).
+- **3c — meals + shopping + teardown:** swap WeekCalendar + ShoppingLists to the
+  core; remove the HTTP/OpenAPI client and sidecar boot; stub import/export/settings;
+  drop the health badge. Ends with the localhost API no longer used for reads/writes.

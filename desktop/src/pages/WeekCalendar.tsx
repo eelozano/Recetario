@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  api,
-  type MealEvent,
-  type MealType,
-  type RecipeSummary,
-  type WeekPlan,
-} from "../api/client";
+import { Decimal } from "decimal.js";
+import { MealType, type MealEvent, type Recipe } from "@recetario/core";
+import { getRepos } from "../data/repos";
+import { loadWeekPlan, profileToStrings, type WeekPlan } from "../data/queries";
 import { formatAmount, formatQuantity, macroUnit } from "../api/format";
 import { addDays, isoDate, startOfWeek } from "../api/week";
 
-const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
+const MEAL_TYPES: MealType[] = [
+  MealType.BREAKFAST,
+  MealType.LUNCH,
+  MealType.DINNER,
+  MealType.SNACK,
+];
 const MEAL_LABEL: Record<MealType, string> = {
-  breakfast: "Breakfast",
-  lunch: "Lunch",
-  dinner: "Dinner",
-  snack: "Snack",
+  [MealType.BREAKFAST]: "Breakfast",
+  [MealType.LUNCH]: "Lunch",
+  [MealType.DINNER]: "Dinner",
+  [MealType.SNACK]: "Snack",
 };
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -30,7 +32,7 @@ interface Props {
 export function WeekCalendar({ reloadKey }: Props) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [plan, setPlan] = useState<WeekPlan | null>(null);
-  const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState<{ date: string; mealType: MealType } | null>(null);
 
@@ -42,26 +44,29 @@ export function WeekCalendar({ reloadKey }: Props) {
   const end = isoDate(days[6]);
 
   const loadPlan = useCallback(async () => {
-    const { data, error: apiError } = await api.GET("/meals", {
-      params: { query: { start, end } },
-    });
-    if (apiError || !data) {
-      setError("Could not load the meal plan. Is the API running?");
-      return;
+    try {
+      setError(null);
+      setPlan(await loadWeekPlan(start, end));
+    } catch {
+      setError("Could not load the meal plan.");
     }
-    setError(null);
-    setPlan(data);
   }, [start, end]);
 
   useEffect(() => {
     loadPlan();
   }, [loadPlan, reloadKey]);
 
-  // Recipe options for the scheduler — only finalized recipes are worth planning.
+  // Recipe options for the scheduler.
   useEffect(() => {
     (async () => {
-      const { data } = await api.GET("/recipes", { params: { query: {} } });
-      if (data) setRecipes(data);
+      try {
+        const { recipes } = await getRepos();
+        const data = await recipes.list();
+        data.sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()));
+        setRecipes(data);
+      } catch {
+        // Non-fatal: the scheduler simply shows no recipe options.
+      }
     })();
   }, [reloadKey]);
 
@@ -69,7 +74,7 @@ export function WeekCalendar({ reloadKey }: Props) {
   const eventsByCell = useMemo(() => {
     const map = new Map<string, MealEvent[]>();
     for (const e of plan?.events ?? []) {
-      const key = `${e.date}|${e.meal_type}`;
+      const key = `${e.date}|${e.mealType}`;
       const bucket = map.get(key);
       if (bucket) bucket.push(e);
       else map.set(key, [e]);
@@ -80,16 +85,20 @@ export function WeekCalendar({ reloadKey }: Props) {
   const caloriesByDay = useMemo(() => {
     const map = new Map<string, string>();
     for (const d of plan?.macros.days ?? []) {
-      if (d.totals.calories != null) map.set(d.date, d.totals.calories);
+      const cals = d.totals.amounts.calories;
+      if (cals != null) map.set(d.date, cals.toString());
     }
     return map;
   }, [plan]);
 
-  async function deleteEvent(id: number) {
-    const { error: apiError } = await api.DELETE("/meals/{event_id}", {
-      params: { path: { event_id: id } },
-    });
-    if (!apiError) loadPlan();
+  async function deleteEvent(id: string) {
+    try {
+      const { meals } = await getRepos();
+      await meals.delete(id);
+      loadPlan();
+    } catch {
+      setError("Could not remove this meal.");
+    }
   }
 
   const weekLabel = `${days[0].toLocaleDateString(undefined, {
@@ -97,7 +106,7 @@ export function WeekCalendar({ reloadKey }: Props) {
     day: "numeric",
   })} – ${days[6].toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 
-  const weekTotals = plan?.macros.totals ?? {};
+  const weekTotals = plan ? profileToStrings(plan.macros.totals) : {};
 
   return (
     <div className="calendar">
@@ -141,15 +150,15 @@ export function WeekCalendar({ reloadKey }: Props) {
                       {MEAL_LABEL[mt]} <span className="slot__plus">+</span>
                     </button>
                     {cellEvents.map((e) => (
-                      <div key={e.id} className="meal-chip" title={e.recipe_title ?? ""}>
-                        <span className="meal-chip__title">{e.recipe_title ?? "Recipe"}</span>
+                      <div key={e.id} className="meal-chip" title={e.recipeTitle ?? ""}>
+                        <span className="meal-chip__title">{e.recipeTitle ?? "Recipe"}</span>
                         <span className="meal-chip__servings">
-                          ×{formatQuantity(e.servings_planned)}
+                          ×{formatQuantity(e.servingsPlanned?.toString())}
                         </span>
                         <button
                           className="meal-chip__remove"
                           title="Remove"
-                          onClick={() => deleteEvent(e.id)}
+                          onClick={() => deleteEvent(e.id!)}
                         >
                           ×
                         </button>
@@ -217,11 +226,11 @@ function AddMealDialog({
 }: {
   date: string;
   mealType: MealType;
-  recipes: RecipeSummary[];
+  recipes: Recipe[];
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const [recipeId, setRecipeId] = useState<number | "">(recipes[0]?.id ?? "");
+  const [recipeId, setRecipeId] = useState<string>(recipes[0]?.id ?? "");
   const [servings, setServings] = useState("1");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,20 +240,21 @@ function AddMealDialog({
     if (recipeId === "" || saving) return;
     setSaving(true);
     setError(null);
-    const { error: apiError } = await api.POST("/meals", {
-      body: {
-        date,
-        meal_type: mealType,
-        recipe_id: Number(recipeId),
-        servings_planned: servings || "1",
-      },
-    });
-    setSaving(false);
-    if (apiError) {
-      setError("Could not schedule this meal.");
-      return;
+    let servingsPlanned: Decimal;
+    try {
+      servingsPlanned = new Decimal(servings || "1");
+    } catch {
+      servingsPlanned = new Decimal(1);
     }
-    onAdded();
+    try {
+      const { meals } = await getRepos();
+      await meals.create({ date, mealType, recipeId, servingsPlanned });
+      onAdded();
+    } catch {
+      setError("Could not schedule this meal.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const prettyDate = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
@@ -261,17 +271,14 @@ function AddMealDialog({
         </h2>
 
         {recipes.length === 0 ? (
-          <p className="muted">No recipes yet. Create or import one first.</p>
+          <p className="muted">No recipes yet. Create one first.</p>
         ) : (
           <>
             <label className="modal__field">
               <span>Recipe</span>
-              <select
-                value={recipeId}
-                onChange={(e) => setRecipeId(e.target.value ? Number(e.target.value) : "")}
-              >
+              <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
                 {recipes.map((r) => (
-                  <option key={r.id} value={r.id}>
+                  <option key={r.id} value={r.id ?? ""}>
                     {r.title}
                   </option>
                 ))}

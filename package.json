@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Local-first recipe & meal-planning app (Architecture v2: portable TS core + thin Python ingestion helper).",
   "workspaces": [
-    "core"
+    "core",
+    "desktop"
   ]
 }

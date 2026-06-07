@@ -1,13 +1,17 @@
 import { useState } from "react";
-import { api } from "../api/client";
-import type { paths } from "../api/schema";
-
-type RecipeCreateBody =
-  paths["/recipes"]["post"]["requestBody"]["content"]["application/json"];
+import { Decimal } from "decimal.js";
+import {
+  normalizeIngredientName,
+  RecipeStatus,
+  SourceType,
+  type Recipe,
+  type RecipeIngredient,
+} from "@recetario/core";
+import { getRepos } from "../data/repos";
 
 interface Props {
   /** Called with the new recipe's id after it's created, so the app can open it. */
-  onCreated: (recipeId: number) => void;
+  onCreated: (recipeId: string) => void;
   /** Called when the user backs out without creating anything. */
   onCancel: () => void;
 }
@@ -27,14 +31,22 @@ function blankRow(): IngredientRow {
   return { key: nextKey(), name: "", quantity: "", unit: "", notes: "" };
 }
 
+/** Parse a quantity string into a Decimal, or null if blank/unparseable. */
+function parseQuantity(raw: string): Decimal | null {
+  const s = raw.trim();
+  if (!s) return null;
+  try {
+    return new Decimal(s);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Manual recipe creation. The app could only import recipes from a URL before;
- * this lets the user type one in from scratch (a cookbook, a family recipe, etc.).
- *
- * It mirrors the in-place edit form on RecipeDetail, but POSTs a brand-new recipe
- * as source_type "manual" / status "finalized" (no draft-review step is needed
- * for something the user typed themselves). Per-serving macros can be added
- * afterward from the detail view.
+ * Manual recipe creation: type a recipe in from scratch (a cookbook, a family
+ * recipe, etc.). Saves a brand-new recipe as source_type "manual" / status
+ * "finalized" (no draft-review step is needed for something the user typed
+ * themselves). Per-serving macros can be added afterward from the detail view.
  */
 export function NewRecipe({ onCreated, onCancel }: Props) {
   const [title, setTitle] = useState("");
@@ -80,31 +92,37 @@ export function NewRecipe({ onCreated, onCancel }: Props) {
 
     setSaving(true);
     setErr(null);
-    const body: RecipeCreateBody = {
-      title: title.trim(),
-      description: description.trim() || null,
-      source_type: "manual",
-      status: "finalized",
-      servings: servingsNum,
-      instructions_md: instructions.trim() || null,
-      ingredients: filledRows.map((r) => ({
-        name: r.name.trim(),
-        quantity: r.quantity.trim() || null,
+    const ingredients: RecipeIngredient[] = filledRows.map((r) => {
+      const name = r.name.trim();
+      return {
+        ingredient: { name, normalizedName: normalizeIngredientName(name) },
+        quantity: parseQuantity(r.quantity),
         unit: r.unit.trim() || null,
         notes: r.notes.trim() || null,
-      })),
+      };
+    });
+    const recipe: Recipe = {
+      title: title.trim(),
+      description: description.trim() || null,
+      sourceType: SourceType.MANUAL,
+      status: RecipeStatus.FINALIZED,
+      servings: servingsNum,
+      instructionsMd: instructions.trim() || null,
+      ingredients,
       tags: tags
         .split(",")
         .map((t) => t.trim())
-        .filter((t) => t.length),
+        .filter((t) => t.length)
+        .map((name) => ({ name })),
     };
-    const { data, error: apiError } = await api.POST("/recipes", { body });
-    setSaving(false);
-    if (apiError || !data) {
-      setErr("Could not create this recipe. Is the backend running?");
-      return;
+    try {
+      const { recipes } = await getRepos();
+      const saved = await recipes.create(recipe);
+      onCreated(saved.id!);
+    } catch {
+      setSaving(false);
+      setErr("Could not create this recipe.");
     }
-    onCreated(data.id);
   }
 
   return (

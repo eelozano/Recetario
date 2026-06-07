@@ -1,0 +1,24 @@
+{
+  "name": "@recetario/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable, framework-free domain core (entities + services). Shared by the desktop shell now and a future React Native app. No network, no filesystem, no Node-only APIs.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "decimal.js": "^10.4.3"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "vitest": "^2.1.9"
+  }
+}

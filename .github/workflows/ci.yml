@@ -36,6 +36,29 @@ jobs:
       - name: Run tests
         run: pytest
 
+  core:
+    name: Core (vitest + typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Root npm workspace; @recetario/core is the only member. Pure unit tests
+      # (decimal.js math, no network/fs) — the portable domain's regression gate.
+      - name: Install workspace deps
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck --workspace @recetario/core
+
+      - name: Test
+        run: npm test --workspace @recetario/core
+
   frontend:
     name: Frontend typecheck + build
     runs-on: ubuntu-latest

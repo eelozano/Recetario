@@ -527,6 +527,62 @@ body {
   margin-bottom: 16px;
 }
 
+/* ---- Manual macro entry (#18) ---- */
+.btn--small {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.macro-entry {
+  margin-top: 28px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.macro-entry__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.macro-entry__head .section-title {
+  margin: 0;
+}
+.macro-entry__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.macro-entry__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.macro-entry__field input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+.macro-entry__field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.macro-entry__hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+.macro-entry__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 /* ---- Import-from-URL box ---- */
 .import {
   display: flex;

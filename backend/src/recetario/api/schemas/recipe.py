@@ -32,6 +32,12 @@ class RecipeCreate(BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5)
     status: RecipeStatus = RecipeStatus.DRAFT
     instructions_md: str | None = None
+    calories_per_serving: Decimal | None = Field(default=None, ge=0)
+    protein_per_serving: Decimal | None = Field(default=None, ge=0)
+    fat_per_serving: Decimal | None = Field(default=None, ge=0)
+    carbs_per_serving: Decimal | None = Field(default=None, ge=0)
+    fiber_per_serving: Decimal | None = Field(default=None, ge=0)
+    sodium_per_serving: Decimal | None = Field(default=None, ge=0)
     ingredients: list[IngredientLineIn] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
 
@@ -45,6 +51,12 @@ class RecipeCreate(BaseModel):
             rating=self.rating,
             status=self.status,
             instructions_md=self.instructions_md,
+            calories_per_serving=self.calories_per_serving,
+            protein_per_serving=self.protein_per_serving,
+            fat_per_serving=self.fat_per_serving,
+            carbs_per_serving=self.carbs_per_serving,
+            fiber_per_serving=self.fiber_per_serving,
+            sodium_per_serving=self.sodium_per_serving,
             ingredients=[
                 RecipeIngredientInput(
                     name=line.name,
@@ -92,6 +104,12 @@ class RecipeOut(BaseModel):
     rating: int | None
     status: RecipeStatus
     instructions_md: str | None
+    calories_per_serving: Decimal | None
+    protein_per_serving: Decimal | None
+    fat_per_serving: Decimal | None
+    carbs_per_serving: Decimal | None
+    fiber_per_serving: Decimal | None
+    sodium_per_serving: Decimal | None
     ingredients: list[IngredientLineOut]
     tags: list[TagOut]
 
@@ -107,6 +125,12 @@ class RecipeOut(BaseModel):
             rating=recipe.rating,
             status=recipe.status,
             instructions_md=recipe.instructions_md,
+            calories_per_serving=recipe.calories_per_serving,
+            protein_per_serving=recipe.protein_per_serving,
+            fat_per_serving=recipe.fat_per_serving,
+            carbs_per_serving=recipe.carbs_per_serving,
+            fiber_per_serving=recipe.fiber_per_serving,
+            sodium_per_serving=recipe.sodium_per_serving,
             ingredients=[
                 IngredientLineOut(
                     id=line.id,

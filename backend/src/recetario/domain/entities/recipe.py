@@ -70,6 +70,15 @@ class Recipe:
     rating: int | None = None
     status: RecipeStatus = RecipeStatus.DRAFT
     instructions_md: str | None = None
+    # Recipe-level macros, entered by hand per serving. These are the primary
+    # macro source: when any is set, the MacroCalculator uses them directly
+    # instead of summing ingredient-level USDA links (see macro_calculator).
+    calories_per_serving: Decimal | None = None
+    protein_per_serving: Decimal | None = None
+    fat_per_serving: Decimal | None = None
+    carbs_per_serving: Decimal | None = None
+    fiber_per_serving: Decimal | None = None
+    sodium_per_serving: Decimal | None = None
     ingredients: list[RecipeIngredient] = field(default_factory=list)
     tags: list[Tag] = field(default_factory=list)
     created_at: datetime | None = None

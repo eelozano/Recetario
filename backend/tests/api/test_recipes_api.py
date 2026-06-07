@@ -67,3 +67,47 @@ def test_tags_endpoint(client):
     client.post("/recipes", json=_sample_recipe())
     names = {t["name"] for t in client.get("/tags").json()}
     assert {"dinner", "quick"} <= names
+
+
+def test_manual_macros_round_trip_and_drive_breakdown(client):
+    # Create a recipe with hand-entered per-serving macros (#18).
+    payload = _sample_recipe()
+    payload.update(
+        servings=2,
+        calories_per_serving="320",
+        protein_per_serving="18",
+        fat_per_serving="9",
+        carbs_per_serving="40",
+        fiber_per_serving="6",
+        sodium_per_serving="450",
+    )
+    created = client.post("/recipes", json=payload).json()
+    recipe_id = created["id"]
+
+    # The values persist and come back on the recipe (as decimal strings).
+    got = client.get(f"/recipes/{recipe_id}").json()
+    assert got["calories_per_serving"] == "320.000"
+    assert got["protein_per_serving"] == "18.000"
+    assert got["sodium_per_serving"] == "450.000"
+
+    # The macros endpoint reflects the manual values, not ingredient links.
+    macros = client.get(f"/recipes/{recipe_id}/macros").json()
+    assert macros["per_serving"]["calories"] == "320.000"
+    assert macros["per_serving"]["carbohydrate"] == "40.000"
+    # Totals scale by the 2-serving yield; no per-ingredient lines.
+    assert macros["totals"]["calories"] == "640.000"
+    assert macros["lines"] == []
+    assert macros["unresolved_count"] == 0
+
+
+def test_recipe_without_macros_leaves_fields_null(client):
+    created = client.post("/recipes", json=_sample_recipe()).json()
+    got = client.get(f"/recipes/{created['id']}").json()
+    assert got["calories_per_serving"] is None
+    assert got["sodium_per_serving"] is None
+
+
+def test_negative_macro_is_rejected(client):
+    payload = _sample_recipe()
+    payload["calories_per_serving"] = "-5"
+    assert client.post("/recipes", json=payload).status_code == 422

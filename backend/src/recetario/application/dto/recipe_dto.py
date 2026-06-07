@@ -33,5 +33,11 @@ class RecipeInput:
     rating: int | None = None
     status: RecipeStatus = RecipeStatus.DRAFT
     instructions_md: str | None = None
+    calories_per_serving: Decimal | None = None
+    protein_per_serving: Decimal | None = None
+    fat_per_serving: Decimal | None = None
+    carbs_per_serving: Decimal | None = None
+    fiber_per_serving: Decimal | None = None
+    sodium_per_serving: Decimal | None = None
     ingredients: list[RecipeIngredientInput] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)

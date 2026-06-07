@@ -47,6 +47,12 @@ def _recipe_to_domain(model: RecipeModel) -> Recipe:
         rating=model.rating,
         status=RecipeStatus(model.status),
         instructions_md=model.instructions_md,
+        calories_per_serving=model.calories_per_serving,
+        protein_per_serving=model.protein_per_serving,
+        fat_per_serving=model.fat_per_serving,
+        carbs_per_serving=model.carbs_per_serving,
+        fiber_per_serving=model.fiber_per_serving,
+        sodium_per_serving=model.sodium_per_serving,
         ingredients=[
             RecipeIngredient(
                 id=ri.id,
@@ -107,6 +113,12 @@ class SqlAlchemyRecipeRepository:
         model.rating = recipe.rating
         model.status = recipe.status.value
         model.instructions_md = recipe.instructions_md
+        model.calories_per_serving = recipe.calories_per_serving
+        model.protein_per_serving = recipe.protein_per_serving
+        model.fat_per_serving = recipe.fat_per_serving
+        model.carbs_per_serving = recipe.carbs_per_serving
+        model.fiber_per_serving = recipe.fiber_per_serving
+        model.sodium_per_serving = recipe.sodium_per_serving
         model.ingredients = [
             RecipeIngredientModel(
                 ingredient=self._get_or_create_ingredient(line.ingredient),

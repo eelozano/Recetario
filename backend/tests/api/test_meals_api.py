@@ -66,6 +66,34 @@ def test_schedule_and_week_plan_with_macros(client):
     assert Decimal(body["macros"]["days"][0]["totals"]["calories"]) == Decimal("80")
 
 
+def test_week_rollup_uses_manual_macros(client):
+    # A recipe with hand-entered per-serving macros needs no USDA seeding (#18).
+    recipe = client.post(
+        "/recipes",
+        json={
+            "title": "Protein bowl",
+            "servings": 1,
+            "calories_per_serving": "500",
+            "protein_per_serving": "40",
+            "ingredients": [{"name": "Chicken", "quantity": "1", "unit": "pc"}],
+        },
+    ).json()
+    client.post(
+        "/meals",
+        json={
+            "date": "2026-06-02",
+            "meal_type": "lunch",
+            "recipe_id": recipe["id"],
+            "servings_planned": "2",
+        },
+    )
+
+    plan = client.get("/meals", params={"start": "2026-06-01", "end": "2026-06-07"}).json()
+    # 500 kcal/serving * 2 planned servings = 1000
+    assert Decimal(plan["macros"]["totals"]["calories"]) == Decimal("1000")
+    assert Decimal(plan["macros"]["totals"]["protein"]) == Decimal("80")
+
+
 def test_week_plan_excludes_out_of_range_events(client):
     _seed_onion(client)
     recipe = _linked_recipe(client)

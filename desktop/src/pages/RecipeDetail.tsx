@@ -34,6 +34,12 @@ function toUpdateBody(
     rating: recipe.rating,
     status: recipe.status,
     instructions_md: recipe.instructions_md,
+    calories_per_serving: recipe.calories_per_serving,
+    protein_per_serving: recipe.protein_per_serving,
+    fat_per_serving: recipe.fat_per_serving,
+    carbs_per_serving: recipe.carbs_per_serving,
+    fiber_per_serving: recipe.fiber_per_serving,
+    sodium_per_serving: recipe.sodium_per_serving,
     ingredients: recipe.ingredients.map((l) => ({
       name: l.name,
       quantity: l.quantity,
@@ -277,8 +283,15 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
 
       <Directions instructionsMd={recipe.instructions_md} />
 
+      <MacroEditor recipe={recipe} onSaved={reload} />
+
       <SummaryCards macros={macros} columns={columns} />
 
+      {/* The per-ingredient USDA breakdown only applies when macros come from
+          ingredient links. With hand-entered macros (#18) there are no lines, so
+          this diagnostic table is hidden — the summary cards above carry the
+          numbers. (This whole section is slated for removal in #19.) */}
+      {macros.lines.length > 0 && (
       <section>
         <h2 className="section-title">Per-ingredient breakdown</h2>
         {columns.length === 0 && (
@@ -375,7 +388,137 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
           )}
         </table>
       </section>
+      )}
     </div>
+  );
+}
+
+// The six per-serving macros the user can record by hand (#18). Keys match the
+// recipe schema; units mirror the canonical macro table in api/format.ts.
+const MACRO_FIELDS = [
+  { key: "calories_per_serving", label: "Calories", unit: "kcal" },
+  { key: "protein_per_serving", label: "Protein", unit: "g" },
+  { key: "fat_per_serving", label: "Fat", unit: "g" },
+  { key: "carbs_per_serving", label: "Carbs", unit: "g" },
+  { key: "fiber_per_serving", label: "Fiber", unit: "g" },
+  { key: "sodium_per_serving", label: "Sodium", unit: "mg" },
+] as const;
+
+type MacroFieldKey = (typeof MACRO_FIELDS)[number]["key"];
+
+function macroValues(recipe: RecipeOut): Record<MacroFieldKey, string> {
+  return Object.fromEntries(
+    MACRO_FIELDS.map((f) => [f.key, recipe[f.key] != null ? String(recipe[f.key]) : ""]),
+  ) as Record<MacroFieldKey, string>;
+}
+
+/**
+ * Inline editor for the recipe's hand-entered per-serving macros — the primary
+ * macro workflow (#18). Saves via the same full-recipe PUT (toUpdateBody carries
+ * every other field through unchanged), then asks the parent to reload so the
+ * summary cards reflect the new numbers.
+ */
+function MacroEditor({ recipe, onSaved }: { recipe: RecipeOut; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [values, setValues] = useState<Record<MacroFieldKey, string>>(() => macroValues(recipe));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const anySet = MACRO_FIELDS.some((f) => recipe[f.key] != null);
+
+  function start() {
+    setValues(macroValues(recipe));
+    setErr(null);
+    setEditing(true);
+  }
+
+  async function save() {
+    if (saving) return;
+    const overrides: Partial<RecipeUpdateBody> = {};
+    for (const f of MACRO_FIELDS) {
+      const raw = values[f.key].trim();
+      if (raw === "") {
+        overrides[f.key] = null;
+        continue;
+      }
+      const n = Number(raw);
+      if (Number.isNaN(n) || n < 0) {
+        setErr(`${f.label} must be a number of 0 or more (or left blank).`);
+        return;
+      }
+      overrides[f.key] = raw;
+    }
+
+    setSaving(true);
+    setErr(null);
+    const { error: apiError } = await api.PUT("/recipes/{recipe_id}", {
+      params: { path: { recipe_id: recipe.id } },
+      body: toUpdateBody(recipe, overrides),
+    });
+    setSaving(false);
+    if (apiError) {
+      setErr("Could not save macros.");
+      return;
+    }
+    setEditing(false);
+    onSaved();
+  }
+
+  if (!editing) {
+    return (
+      <section className="macro-entry">
+        <div className="macro-entry__head">
+          <h2 className="section-title">Macros (per serving)</h2>
+          <button className="btn btn--small" onClick={start}>
+            {anySet ? "Edit macros" : "Add macros"}
+          </button>
+        </div>
+        {!anySet && (
+          <p className="muted">
+            No macros recorded yet — add them by hand for quick per-serving tracking.
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="macro-entry">
+      <div className="macro-entry__head">
+        <h2 className="section-title">Macros (per serving)</h2>
+      </div>
+      {err && <p className="error">{err}</p>}
+      <div className="macro-entry__grid">
+        {MACRO_FIELDS.map((f) => (
+          <label key={f.key} className="macro-entry__field">
+            <span>
+              {f.label} <span className="unit">({f.unit})</span>
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={values[f.key]}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              placeholder="—"
+            />
+          </label>
+        ))}
+      </div>
+      <p className="muted macro-entry__hint">
+        Totals roll up as per-serving × {recipe.servings ?? 1} serving
+        {(recipe.servings ?? 1) === 1 ? "" : "s"}. Leave a field blank to omit it.
+      </p>
+      <div className="macro-entry__actions">
+        <button className="btn btn--accent" onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save macros"}
+        </button>
+        <button className="btn" onClick={() => setEditing(false)} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    </section>
   );
 }
 

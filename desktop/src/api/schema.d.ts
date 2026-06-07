@@ -557,6 +557,18 @@ export interface components {
             status: components["schemas"]["RecipeStatus"];
             /** Instructions Md */
             instructions_md?: string | null;
+            /** Calories Per Serving */
+            calories_per_serving?: number | string | null;
+            /** Protein Per Serving */
+            protein_per_serving?: number | string | null;
+            /** Fat Per Serving */
+            fat_per_serving?: number | string | null;
+            /** Carbs Per Serving */
+            carbs_per_serving?: number | string | null;
+            /** Fiber Per Serving */
+            fiber_per_serving?: number | string | null;
+            /** Sodium Per Serving */
+            sodium_per_serving?: number | string | null;
             /** Ingredients */
             ingredients?: components["schemas"]["IngredientLineIn"][];
             /** Tags */
@@ -580,6 +592,18 @@ export interface components {
             status: components["schemas"]["RecipeStatus"];
             /** Instructions Md */
             instructions_md: string | null;
+            /** Calories Per Serving */
+            calories_per_serving: string | null;
+            /** Protein Per Serving */
+            protein_per_serving: string | null;
+            /** Fat Per Serving */
+            fat_per_serving: string | null;
+            /** Carbs Per Serving */
+            carbs_per_serving: string | null;
+            /** Fiber Per Serving */
+            fiber_per_serving: string | null;
+            /** Sodium Per Serving */
+            sodium_per_serving: string | null;
             /** Ingredients */
             ingredients: components["schemas"]["IngredientLineOut"][];
             /** Tags */

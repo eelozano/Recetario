@@ -45,6 +45,12 @@ def _to_domain(data: RecipeInput) -> Recipe:
         rating=data.rating,
         status=data.status,
         instructions_md=data.instructions_md,
+        calories_per_serving=data.calories_per_serving,
+        protein_per_serving=data.protein_per_serving,
+        fat_per_serving=data.fat_per_serving,
+        carbs_per_serving=data.carbs_per_serving,
+        fiber_per_serving=data.fiber_per_serving,
+        sodium_per_serving=data.sodium_per_serving,
         ingredients=ingredients,
         tags=[Tag(name=t) for t in tags],
     )

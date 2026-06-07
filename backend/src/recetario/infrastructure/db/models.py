@@ -48,6 +48,13 @@ class RecipeModel(TimestampMixin, Base):
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="draft")
     instructions_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Hand-entered per-serving macros (#18). Primary macro source when present.
+    calories_per_serving: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    protein_per_serving: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    fat_per_serving: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    carbs_per_serving: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    fiber_per_serving: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    sodium_per_serving: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
 
     ingredients: Mapped[list["RecipeIngredientModel"]] = relationship(
         back_populates="recipe",

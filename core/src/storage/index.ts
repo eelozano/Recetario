@@ -15,3 +15,9 @@ export {
 } from "./recipe-layout";
 export { recipeToMarkdown, recipeFromMarkdown } from "./recipe-serialization";
 export { RecipeRepository } from "./recipe-repository";
+
+export { monthFileToString, eventsFromMonthFile } from "./meal-serialization";
+export { MealEventRepository, MEAL_DIR } from "./meal-repository";
+
+export { shoppingListToYaml, shoppingListFromYaml } from "./shopping-serialization";
+export { ShoppingListRepository, SHOPPING_DIR } from "./shopping-repository";

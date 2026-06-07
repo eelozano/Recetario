@@ -16,7 +16,7 @@ from recetario.application.ports import (
 )
 from recetario.application.use_cases.recipes import RecipeNotFoundError
 from recetario.domain.entities import MealEvent
-from recetario.domain.services.macro_calculator import MacroCalculator
+from recetario.domain.services.macro_calculator import MacroCalculator, manual_per_serving
 from recetario.domain.services.meal_planner import (
     MealPlanAggregator,
     PlannedMeal,
@@ -123,6 +123,11 @@ class CalculateWeekMacros:
         recipe = self._recipes.get(recipe_id)
         if recipe is None:
             return MacroProfile({})
+        # Hand-entered macros are the primary source; skip the nutrition lookup
+        # entirely when they're present (matches MacroCalculator's precedence).
+        manual = manual_per_serving(recipe)
+        if manual is not None:
+            return manual
         fdc_ids = {
             fid
             for line in recipe.ingredients

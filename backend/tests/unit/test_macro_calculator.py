@@ -65,3 +65,60 @@ def test_no_servings_means_no_per_serving():
     recipe.servings = None
     breakdown = MacroCalculator().calculate(recipe, _INDEX)
     assert breakdown.per_serving is None
+
+
+# --- Manual per-serving macros (#18): the primary macro workflow ---
+
+
+def test_manual_macros_take_precedence_over_ingredient_links():
+    recipe = _recipe()  # has a USDA-linked onion in _INDEX
+    recipe.calories_per_serving = Decimal("250")
+    recipe.protein_per_serving = Decimal("12")
+
+    breakdown = MacroCalculator().calculate(recipe, _INDEX)
+
+    # Per-serving comes straight from the hand-entered values, not the onion.
+    assert breakdown.per_serving is not None
+    assert breakdown.per_serving.amounts == {"calories": Decimal("250"), "protein": Decimal("12")}
+    # Totals scale by the 2-serving yield; ingredient breakdown is bypassed.
+    assert breakdown.totals.amounts == {"calories": Decimal("500"), "protein": Decimal("24")}
+    assert breakdown.lines == []
+    assert breakdown.unresolved_count == 0
+
+
+def test_manual_macros_map_carbs_fiber_sodium_to_canonical_keys():
+    recipe = _recipe()
+    recipe.servings = 1
+    recipe.carbs_per_serving = Decimal("30")
+    recipe.fiber_per_serving = Decimal("5")
+    recipe.sodium_per_serving = Decimal("400")
+
+    breakdown = MacroCalculator().calculate(recipe, _INDEX)
+
+    assert breakdown.per_serving is not None
+    assert breakdown.per_serving.amounts == {
+        "carbohydrate": Decimal("30"),
+        "fiber": Decimal("5"),
+        "sodium": Decimal("400"),
+    }
+    # One serving: totals equal per-serving.
+    assert breakdown.totals.amounts == breakdown.per_serving.amounts
+
+
+def test_manual_macros_without_servings_assume_one_serving():
+    recipe = _recipe()
+    recipe.servings = None
+    recipe.calories_per_serving = Decimal("180")
+
+    breakdown = MacroCalculator().calculate(recipe, _INDEX)
+
+    assert breakdown.per_serving is not None
+    assert breakdown.per_serving.amounts == {"calories": Decimal("180")}
+    assert breakdown.totals.amounts == {"calories": Decimal("180")}
+
+
+def test_empty_manual_macros_fall_back_to_ingredient_path():
+    # No manual fields set → the existing USDA-link computation still runs.
+    breakdown = MacroCalculator().calculate(_recipe(), _INDEX)
+    assert breakdown.totals.amounts["calories"] == Decimal("80")
+    assert len(breakdown.lines) == 2

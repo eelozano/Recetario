@@ -19,6 +19,32 @@ from recetario.domain.value_objects.macro import MacroProfile, NutrientAmount
 
 _HUNDRED = Decimal(100)
 
+# Maps the recipe's hand-entered per-serving fields to the canonical macro keys
+# the rest of the app uses (matches the frontend's MACRO_ORDER / FDC nutrient
+# names). Carbs/fiber/sodium use the long canonical key.
+_MANUAL_FIELD_TO_KEY: dict[str, str] = {
+    "calories_per_serving": "calories",
+    "protein_per_serving": "protein",
+    "fat_per_serving": "fat",
+    "carbs_per_serving": "carbohydrate",
+    "fiber_per_serving": "fiber",
+    "sodium_per_serving": "sodium",
+}
+
+
+def manual_per_serving(recipe: Recipe) -> MacroProfile | None:
+    """The recipe's hand-entered per-serving macros, or None if none are set.
+
+    Only includes fields the user actually filled in, so an empty form leaves
+    the ingredient-level path (USDA links) untouched.
+    """
+    amounts = {
+        key: value
+        for field_name, key in _MANUAL_FIELD_TO_KEY.items()
+        if (value := getattr(recipe, field_name, None)) is not None
+    }
+    return MacroProfile(amounts) if amounts else None
+
 
 @dataclass(frozen=True)
 class LineMacro:
@@ -80,6 +106,14 @@ class MacroCalculator:
         recipe: Recipe,
         nutrient_index: Mapping[int, Sequence[NutrientAmount]],
     ) -> RecipeMacroBreakdown:
+        # Hand-entered per-serving macros win when present: they are the primary
+        # workflow (#18). Totals scale up by the yield; no per-ingredient lines.
+        manual = manual_per_serving(recipe)
+        if manual is not None:
+            servings = recipe.servings if recipe.servings and recipe.servings > 0 else 1
+            totals = manual.scale(Decimal(servings))
+            return RecipeMacroBreakdown(lines=[], totals=totals, per_serving=manual)
+
         lines = [self.line_profile(line, nutrient_index) for line in recipe.ingredients]
 
         totals = MacroProfile({})

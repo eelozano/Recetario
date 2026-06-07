@@ -16,14 +16,14 @@ function makeRecipe(): Recipe {
     servings: 2,
     ingredients: [
       {
-        id: 1,
+        id: "ri-onion",
         position: 0,
         ingredient: { name: "Onion", normalizedName: "onion" },
-        usdaFdcId: 170000,
+        usdaFdcId: 170000, // external USDA id — stays numeric
         gramWeight: new Decimal("200"),
       },
       {
-        id: 2,
+        id: "ri-salt",
         position: 1,
         ingredient: { name: "Salt", normalizedName: "salt" },
       },

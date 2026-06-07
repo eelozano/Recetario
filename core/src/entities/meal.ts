@@ -7,6 +7,8 @@
  */
 import type { Decimal } from "decimal.js";
 
+import type { Id } from "../identity";
+
 export enum MealType {
   BREAKFAST = "breakfast",
   LUNCH = "lunch",
@@ -17,10 +19,10 @@ export enum MealType {
 export interface MealEvent {
   date: string;
   mealType: MealType;
-  recipeId: number;
+  recipeId: Id;
   servingsPlanned?: Decimal;
   notes?: string | null;
-  id?: number | null;
+  id?: Id | null;
   /** Read-time convenience populated by the repository for the calendar view. */
   recipeTitle?: string | null;
   createdAt?: string | null;

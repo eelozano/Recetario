@@ -13,21 +13,23 @@
  */
 import { Decimal } from "decimal.js";
 
+import type { Id } from "../identity";
+
 export interface ShoppingDemand {
   ingredientName: string;
   normalizedName: string;
   quantity: Decimal | null;
   unit: string | null;
-  ingredientId?: number | null;
-  sourceEventId?: number | null;
+  ingredientId?: Id | null;
+  sourceEventId?: Id | null;
 }
 
 export interface AggregatedItem {
   ingredientName: string;
   unit: string | null;
   totalQuantity: Decimal | null;
-  ingredientId: number | null;
-  sourceEventIds: number[];
+  ingredientId: Id | null;
+  sourceEventIds: Id[];
 }
 
 function unitKey(unit: string | null): string | null {
@@ -69,7 +71,7 @@ export class ShoppingAggregator {
         members.find((m) => m.ingredientId !== null && m.ingredientId !== undefined)
           ?.ingredientId ?? null;
 
-      const sourceEventIds: number[] = [];
+      const sourceEventIds: Id[] = [];
       for (const m of members) {
         if (
           m.sourceEventId !== null &&

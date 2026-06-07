@@ -1,9 +1,15 @@
 # Recetario — working notes for Claude
 
-Local-first desktop recipe & meal-planning app. Python + FastAPI backend (Clean
-Architecture / ports-and-adapters) exposed as a headless localhost JSON API,
-wrapped by a Tauri + React/TypeScript desktop shell. The Python backend ships as
-a PyInstaller one-file Tauri sidecar.
+Local-first desktop recipe & meal-planning app. A Tauri + React/TypeScript
+desktop shell on top of a portable TypeScript core (`@recetario/core`: entities,
+services, flat-file storage). Data lives as flat files under
+`~/Documents/Recetario/data/`, read/written through the Tauri `fs` plugin.
+
+**Architecture v2 migration in progress** (see `docs/architecture-v2-proposal.md`).
+The localhost HTTP API + PyInstaller sidecar were removed in step 3 — the app no
+longer runs a backend process. The Python `backend/` still lives in the repo: it
+becomes an on-demand recipe-ingestion helper (step 4) and is otherwise slated for
+removal (step 7). Don't assume a running server.
 
 ## Testing workflow — rebuild the bundle after each change
 
@@ -12,37 +18,34 @@ finishing a change, rebuild the bundle so they can test the real deliverable:
 
 ```bash
 cd desktop
-bash scripts/build-sidecar.sh   # freeze backend → src-tauri/binaries/recetario-server-<triple>
-npm run tauri build             # bundle → src-tauri/target/release/bundle/{macos,dmg}/
+npm run tauri build   # bundle → src-tauri/target/release/bundle/{macos,dmg}/
 ```
 
-`build-sidecar.sh` must run first whenever backend code changes (it re-freezes
-the PyInstaller binary). For frontend-only changes it's still safe to run both.
+`tauri build` runs `npm run build` (which builds the core to `dist/` first, then
+`tsc && vite build`) before bundling — no separate step needed.
 
 ### Gotcha: rebuilding does NOT update a running app
 macOS `open App.app` re-focuses an already-running instance rather than
 relaunching the new binary, and closing the window doesn't quit it. After every
-rebuild the user must **Cmd+Q the running app, then reopen it** — otherwise the
-old sidecar (possibly missing new routes) keeps serving on port 8765. If a save
-"fails" or a new endpoint 404s, suspect a stale process first
-(`ps aux | grep recetario-server` and compare start time to the build time).
+rebuild the user must **Cmd+Q the running app, then reopen it** — otherwise
+they're still testing the old build.
 
 ## Build/test commands
 
-- Frontend typecheck + build: `cd desktop && npm run build` (`tsc && vite build`)
-- Regenerate typed API client after backend schema changes:
-  `cd desktop && npm run gen:api` (reads `src/api/openapi.json`)
+- Frontend typecheck + build: `cd desktop && npm run build` (builds core, `tsc && vite build`)
+- Core tests: `cd core && npm test` (vitest; uses the Node fs adapter)
 - Backend tests: `cd backend && source .venv/bin/activate && pytest -q`
   - Tests must NOT make live external calls (USDA/Anthropic/Google). Use
     mocks/fixtures/in-memory SQLite.
 
 ## Settings / API keys (BYO keys)
 
-Keys are stored at `~/.recetario/.env` (absolute, outside the repo/bundle, 0600).
-The in-app Settings panel writes them; `GET /settings` returns only
-`{configured, hint}`, never raw values. The packaged app launches with CWD `/`,
-so the absolute config path is what makes keys load — a repo-relative `.env` is
-invisible to the bundle.
+**Paused as of step 3.** The old Settings panel wrote an Anthropic key to
+`~/.recetario/.env` for the localhost backend to read; with the backend gone the
+in-app Settings page is a disabled stub. Keys return in step 5 as a local
+`config.json` (data-folder picker + the API key for the on-demand import helper).
+The backend, while it still runs in dev, continues to read `backend/.env` /
+`~/.recetario/.env` (absolute, outside the repo/bundle, 0600).
 
 ## Security constraints (binding)
 

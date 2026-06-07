@@ -10,12 +10,17 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
 from recetario.api import deps
-from recetario.api.schemas import IngestionJobCreate, IngestionJobOut
+from recetario.api.schemas import (
+    IngestionJobCreate,
+    IngestionJobFromHtml,
+    IngestionJobOut,
+)
 from recetario.application.use_cases.ingestion import (
     EnrichDraftRecipe,
     GetIngestionJob,
     IngestionJobNotFoundError,
     ListIngestionJobs,
+    RunHtmlIngestion,
     RunUrlIngestion,
     RunVideoIngestion,
     StartUrlIngestion,
@@ -27,6 +32,7 @@ from recetario.infrastructure.db.repositories import (
     SqlAlchemyNutritionRepository,
     SqlAlchemyRecipeRepository,
 )
+from recetario.infrastructure.scraping import html_to_text
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
@@ -57,6 +63,31 @@ def _run_web_job(request: Request, session, jobs, create_recipe, job_id: int) ->
         extractor=extractor,
         fetch_page_text=fetch_page_text,
     )(job_id)
+
+
+def _run_html_job(request: Request, job_id: int, html: str) -> None:
+    """Background worker for the in-app-browser import: parse caller-supplied HTML.
+
+    Mirrors `_run_job`/`_run_web_job` (own DB session, deterministic-first with an
+    optional LLM fallback) but skips the network fetch — the HTML was already
+    captured by the in-app WebView and is handed in directly.
+    """
+    session = request.app.state.session_factory()
+    try:
+        jobs = SqlAlchemyIngestionJobRepository(session)
+        create_recipe = CreateRecipe(SqlAlchemyRecipeRepository(session))
+        extractor = _make_extractor(request)
+        scraper = request.app.state.scraper_factory()
+        RunHtmlIngestion(
+            jobs,
+            create_recipe,
+            scraper,
+            html,
+            extractor=extractor,
+            html_to_text=html_to_text if extractor else None,
+        )(job_id)
+    finally:
+        session.close()
 
 
 def _run_video_job(request: Request, session, jobs, create_recipe, job) -> None:
@@ -118,6 +149,29 @@ def create_ingestion_job(
 ):
     job = uc(payload.url, payload.input_type)
     background.add_task(_run_job, request, job.id)
+    return IngestionJobOut.from_domain(job)
+
+
+@router.post(
+    "/jobs/from-html",
+    response_model=IngestionJobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_ingestion_job_from_html(
+    payload: IngestionJobFromHtml,
+    background: BackgroundTasks,
+    request: Request,
+    uc: StartUrlIngestion = Depends(deps.start_ingestion_uc),
+):
+    """Import a recipe from HTML captured by the in-app browser.
+
+    Used for bot-protected pages (e.g. Cloudflare JS challenges) that a
+    server-side fetch can't get past: the in-app WebView renders the page as a
+    real browser, then the captured HTML is parsed here with no network fetch.
+    Always treated as a web page (videos use the URL path).
+    """
+    job = uc(payload.url, IngestionInputType.WEB)
+    background.add_task(_run_html_job, request, job.id, payload.html)
     return IngestionJobOut.from_domain(job)
 
 

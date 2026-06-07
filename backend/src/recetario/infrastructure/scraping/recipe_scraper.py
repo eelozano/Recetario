@@ -105,14 +105,12 @@ class RecipeScrapersAdapter:
 
     def scrape(self, url: str) -> RecipeInput:
         # Lazy import so the dependency is only needed when actually scraping
-        # (tests inject a fake scraper and never reach this path).
+        # (tests inject a fake scraper and never reach this path). The actual
+        # parse (and its recipe_scrapers import) lives in `parse_html`.
         try:
             import httpx
-            from recipe_scrapers import scrape_html
         except ImportError as exc:  # pragma: no cover - import guard
-            raise ScrapeError(
-                "recipe-scrapers is not installed; run `pip install recipe-scrapers`."
-            ) from exc
+            raise ScrapeError("httpx is not installed.") from exc
 
         try:
             resp = httpx.get(
@@ -125,8 +123,24 @@ class RecipeScrapersAdapter:
         except Exception as exc:
             raise ScrapeError(f"Could not fetch {url}: {exc}") from exc
 
+        return self.parse_html(resp.text, url)
+
+    def parse_html(self, html: str, url: str) -> RecipeInput:
+        """Parse already-fetched page HTML into a draft (no network).
+
+        Shared by `scrape` (after its own fetch) and the in-app-browser import
+        path, which captures the rendered HTML from a real WebView and never
+        needs a server-side fetch at all.
+        """
         try:
-            scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
+            from recipe_scrapers import scrape_html
+        except ImportError as exc:  # pragma: no cover - import guard
+            raise ScrapeError(
+                "recipe-scrapers is not installed; run `pip install recipe-scrapers`."
+            ) from exc
+
+        try:
+            scraper = scrape_html(html, org_url=url, wild_mode=True)
         except Exception as exc:
             raise ScrapeError(f"Could not parse a recipe from {url}: {exc}") from exc
 

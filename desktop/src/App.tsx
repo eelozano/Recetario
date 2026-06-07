@@ -1,6 +1,5 @@
 import { useState } from "react";
 import "./App.css";
-import { HealthBadge } from "./components/HealthBadge";
 import { ImportRecipe } from "./components/ImportRecipe";
 import { RecipeList } from "./pages/RecipeList";
 import { RecipeDetail } from "./pages/RecipeDetail";
@@ -27,7 +26,6 @@ function App() {
       <aside className="sidebar">
         <div className="brand">
           <h1 className="brand__name">Recetario</h1>
-          <HealthBadge />
         </div>
 
         <nav className="nav">

@@ -563,13 +563,16 @@ code {
 }
 
 /* ---- Sidebar nav (Recipes / Calendar) ---- */
+/* 2×2 grid: the sidebar is a fixed 300px, too narrow to fit four labels in one
+   row without truncating "Calendar"/"Settings". A two-column grid gives each
+   tab ample width at any window size. */
 .nav {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
   margin-bottom: 16px;
 }
 .nav__item {
-  flex: 1;
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--muted);
@@ -578,6 +581,8 @@ code {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
 }
 .nav__item:hover {
   color: var(--text);

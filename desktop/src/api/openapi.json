@@ -514,6 +514,48 @@
         }
       }
     },
+    "/ingestion/jobs/from-html": {
+      "post": {
+        "tags": [
+          "ingestion"
+        ],
+        "summary": "Create Ingestion Job From Html",
+        "description": "Import a recipe from HTML captured by the in-app browser.\n\nUsed for bot-protected pages (e.g. Cloudflare JS challenges) that a\nserver-side fetch can't get past: the in-app WebView renders the page as a\nreal browser, then the captured HTML is parsed here with no network fetch.\nAlways treated as a web page (videos use the URL path).",
+        "operationId": "create_ingestion_job_from_html_ingestion_jobs_from_html_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionJobFromHtml"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingestion/jobs/{job_id}": {
       "get": {
         "tags": [
@@ -1250,6 +1292,29 @@
           "url"
         ],
         "title": "IngestionJobCreate"
+      },
+      "IngestionJobFromHtml": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Url",
+            "description": "The page's URL, used as the recipe source."
+          },
+          "html": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Html",
+            "description": "Rendered page HTML captured by the in-app WebView."
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "html"
+        ],
+        "title": "IngestionJobFromHtml",
+        "description": "Import from page HTML captured by the in-app browser (no server fetch)."
       },
       "IngestionJobOut": {
         "properties": {

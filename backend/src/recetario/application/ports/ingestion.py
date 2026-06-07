@@ -40,6 +40,16 @@ class ExtractError(Exception):
 class RecipeScraper(Protocol):
     def scrape(self, url: str) -> RecipeInput: ...
 
+    def parse_html(self, html: str, url: str) -> RecipeInput:
+        """Parse caller-supplied page HTML (no network fetch) into a draft.
+
+        Used by the in-app-browser import path: a real WebView runs the page's
+        JS (clearing Cloudflare-style challenges that block a server-side fetch),
+        then hands us the rendered HTML to parse with the same deterministic
+        scraper as `scrape`.
+        """
+        ...
+
 
 class VideoTranscriptFetcher(Protocol):
     """Pulls a plain-text transcript from a video URL (captions, no ASR).

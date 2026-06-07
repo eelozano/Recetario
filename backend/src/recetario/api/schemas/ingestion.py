@@ -17,6 +17,16 @@ class IngestionJobCreate(BaseModel):
     )
 
 
+class IngestionJobFromHtml(BaseModel):
+    """Import from page HTML captured by the in-app browser (no server fetch)."""
+
+    url: str = Field(min_length=1, description="The page's URL, used as the recipe source.")
+    html: str = Field(
+        min_length=1,
+        description="Rendered page HTML captured by the in-app WebView.",
+    )
+
+
 class IngestionJobOut(BaseModel):
     id: int
     input_url: str

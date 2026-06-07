@@ -144,6 +144,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ingestion/jobs/from-html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ingestion Job From Html
+         * @description Import a recipe from HTML captured by the in-app browser.
+         *
+         *     Used for bot-protected pages (e.g. Cloudflare JS challenges) that a
+         *     server-side fetch can't get past: the in-app WebView renders the page as a
+         *     real browser, then the captured HTML is parsed here with no network fetch.
+         *     Always treated as a web page (videos use the URL path).
+         */
+        post: operations["create_ingestion_job_from_html_ingestion_jobs_from_html_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingestion/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -380,6 +405,22 @@ export interface components {
             url: string;
             /** @description Force 'web' or 'video' handling; auto-detected from the URL when omitted. */
             input_type?: components["schemas"]["IngestionInputType"] | null;
+        };
+        /**
+         * IngestionJobFromHtml
+         * @description Import from page HTML captured by the in-app browser (no server fetch).
+         */
+        IngestionJobFromHtml: {
+            /**
+             * Url
+             * @description The page's URL, used as the recipe source.
+             */
+            url: string;
+            /**
+             * Html
+             * @description Rendered page HTML captured by the in-app WebView.
+             */
+            html: string;
         };
         /** IngestionJobOut */
         IngestionJobOut: {
@@ -1131,6 +1172,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["IngestionJobCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ingestion_job_from_html_ingestion_jobs_from_html_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestionJobFromHtml"];
             };
         };
         responses: {

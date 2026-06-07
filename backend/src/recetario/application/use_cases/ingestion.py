@@ -48,6 +48,14 @@ def detect_input_type(url: str) -> IngestionInputType:
     return IngestionInputType.WEB
 
 
+# Shown when deterministic scraping fails and there's no LLM fallback available
+# (shared by the URL and provided-HTML import paths).
+_NO_LLM_ERROR = (
+    "Couldn't read a recipe from this page automatically. Try a different "
+    'link, or use "+ New recipe" to enter it by hand.'
+)
+
+
 class IngestionJobNotFoundError(Exception):
     def __init__(self, job_id: int) -> None:
         super().__init__(f"Ingestion job {job_id} not found")
@@ -182,12 +190,6 @@ class RunUrlIngestion:
     it. With no extractor we surface a clean, user-facing error instead.
     """
 
-    # Shown when scraping fails and there's no LLM fallback available.
-    _NO_LLM_ERROR = (
-        "Couldn't read a recipe from this page automatically. Try a different "
-        'link, or use "+ New recipe" to enter it by hand.'
-    )
-
     def __init__(
         self,
         jobs: IngestionJobRepository,
@@ -220,8 +222,58 @@ class RunUrlIngestion:
         if self._extractor is None or self._fetch_page_text is None:
             # No Anthropic key configured — surface a clean, actionable message
             # rather than the library's internal parse error.
-            raise ScrapeError(self._NO_LLM_ERROR) from scrape_error
+            raise ScrapeError(_NO_LLM_ERROR) from scrape_error
         page_text = self._fetch_page_text(url)
+        return self._extractor.extract_from_web(page_text, source_url=url)
+
+
+class RunHtmlIngestion:
+    """Execute a web import from caller-supplied HTML (the in-app-browser path).
+
+    Identical to `RunUrlIngestion` except the page HTML is captured by a real
+    in-app WebView (which can clear Cloudflare-style JS challenges that block a
+    server-side fetch) and handed to us directly — so there is **no network
+    fetch** here. The same deterministic scraper parses it, with the same LLM
+    fallback (`extract_from_web` over the page text) when scraping comes up empty
+    and an Anthropic key is configured.
+
+    The HTML is passed in at construction (it lives only in the background-task
+    closure, never persisted on the job).
+    """
+
+    def __init__(
+        self,
+        jobs: IngestionJobRepository,
+        create_recipe: CreateRecipe,
+        scraper: RecipeScraper,
+        html: str,
+        *,
+        extractor: LlmRecipeExtractor | None = None,
+        html_to_text: Callable[[str], str] | None = None,
+    ) -> None:
+        self._jobs = jobs
+        self._create_recipe = create_recipe
+        self._scraper = scraper
+        self._html = html
+        self._extractor = extractor
+        self._html_to_text = html_to_text
+
+    def __call__(self, job_id: int) -> IngestionJob:
+        return _run_ingestion_job(
+            self._jobs, self._create_recipe, job_id, self._produce
+        )
+
+    def _produce(self, job: IngestionJob) -> RecipeInput:
+        try:
+            return self._scraper.parse_html(self._html, job.input_url)
+        except ScrapeError as scrape_error:
+            return self._fallback(job.input_url, scrape_error)
+
+    def _fallback(self, url: str, scrape_error: ScrapeError) -> RecipeInput:
+        """LLM fallback over the captured HTML's text when scraping found nothing."""
+        if self._extractor is None or self._html_to_text is None:
+            raise ScrapeError(_NO_LLM_ERROR) from scrape_error
+        page_text = self._html_to_text(self._html)
         return self._extractor.extract_from_web(page_text, source_url=url)
 
 

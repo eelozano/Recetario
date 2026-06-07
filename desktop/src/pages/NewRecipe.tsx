@@ -33,8 +33,8 @@ function blankRow(): IngredientRow {
  *
  * It mirrors the in-place edit form on RecipeDetail, but POSTs a brand-new recipe
  * as source_type "manual" / status "finalized" (no draft-review step is needed
- * for something the user typed themselves). Macros come later by linking
- * ingredients to USDA foods on the detail view.
+ * for something the user typed themselves). Per-serving macros can be added
+ * afterward from the detail view.
  */
 export function NewRecipe({ onCreated, onCancel }: Props) {
   const [title, setTitle] = useState("");

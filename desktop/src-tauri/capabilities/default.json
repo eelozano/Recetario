@@ -19,6 +19,13 @@
         { "path": "$DOCUMENT/Recetario" },
         { "path": "$DOCUMENT/Recetario/**" }
       ]
-    }
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "binaries/recetario-helper", "sidecar": true, "args": ["serve"] }
+      ]
+    },
+    "shell:allow-stdin-write"
   ]
 }

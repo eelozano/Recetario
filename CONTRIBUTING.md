@@ -73,18 +73,19 @@ a clean, standalone summary.
 
 A change is mergeable when it's actually been exercised, not just written:
 
-- **Backend logic** → `cd backend && .venv/bin/pytest` (hermetic, offline, ~110 tests).
-- **Migrations / DB swap** → optionally `RECETARIO_TEST_DATABASE_URL=… .venv/bin/pytest`
-  (see [`backend/README.md`](backend/README.md#opt-in-postgres-validation)).
-- **The packaged sidecar** (PyInstaller spec, `server.py`, bundled deps) → rebuild and boot it
-  against a **throwaway** DB, never your real `~/.recetario/recetario.db`. Exercise the actual
-  path that changed.
+- **Core logic** (`@recetario/core`) → `cd core && npm test` (vitest, against a temp dir).
+- **Import helper** → `cd backend && .venv/bin/pytest` (hermetic, offline — no live
+  USDA/Anthropic/network calls).
+- **The frozen import helper** (PyInstaller spec, `helper.py`, bundled deps) → rebuild with
+  `desktop/scripts/build-helper.sh`, then `npm run tauri build` and exercise a real import.
+  Use a **throwaway** data folder (Settings → Change folder…), never your real recipe library.
 - **UI** → `cd desktop && npm run build` (typecheck) and, when it matters, `npm run tauri dev`.
 
 ## Continuous integration
 
-Every PR runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml): the backend `pytest` suite
-and the frontend typecheck/build. The green check is a *floor*, not the whole review — it proves
+Every PR runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml): the core `vitest` suite, the
+import-helper `pytest` suite, and the frontend typecheck/build. The green check is a *floor*, not
+the whole review — it proves
 nothing imported broke, but it can't see a packaging regression, a wrong macro number, or a UI
 that looks off. Treat CI as "the automatable half is handled, now verify the rest."
 
@@ -100,24 +101,23 @@ your tree (start from a clean working tree). Then run only what the change could
 
 | The PR touches…                    | Verify with                                                            |
 | ---------------------------------- | ---------------------------------------------------------------------- |
-| Backend logic                      | `cd backend && .venv/bin/pytest`                                       |
-| A user-facing flow                 | + live smoke test against a **throwaway** DB (below)                   |
-| PyInstaller spec / `server.py`     | rebuild + boot the frozen binary; exercise the changed path           |
+| Core logic (`@recetario/core`)     | `cd core && npm test`                                                  |
+| Import helper (Python)             | `cd backend && .venv/bin/pytest`                                       |
+| A user-facing flow                 | + live smoke test against a **throwaway** data folder (below)          |
+| PyInstaller spec / `helper.py`     | `bash desktop/scripts/build-helper.sh` + `npm run tauri build`; import |
 | UI (React/TS)                      | `cd desktop && npm run build`, then `npm run tauri dev` to click it    |
 | Docs only                          | just read the rendered file                                            |
 
-**Live smoke test** (never against your real `~/.recetario/recetario.db`):
+**Live smoke test** (never against your real recipe library):
 
 ```bash
-export RECETARIO_DATABASE_URL="sqlite:////tmp/pr_test.db"
-export RECETARIO_API_PORT=8801
-cd backend && .venv/bin/alembic upgrade head
-PYTHONPATH=src .venv/bin/python -m uvicorn recetario.api.main:app --port 8801
-# exercise the changed endpoint with curl; Ctrl-C and `rm /tmp/pr_test.db` when done
+cd desktop && npm run tauri dev
+# In the app: Settings → Change folder… → pick an empty temp dir (e.g. ~/Desktop/pr_test).
+# Exercise the changed flow there; delete the folder when done. Your real data is untouched.
 ```
 
-For a **full end-to-end** check, run the backend on `/tmp/pr_test.db` and `npm run tauri dev`
-against it in a second terminal — you drive the real UI without touching your recipe library.
+Because the app reads/writes a plain folder, a throwaway data dir *is* the whole isolation
+story — no database or server to stand up.
 
 **3. Get back cleanly.** `git checkout main && git pull`; `git branch -d <branch>` tidies up the
 local PR branch after merge.
@@ -126,14 +126,14 @@ local PR branch after merge.
 
 These stay local — they're gitignored, keep them that way:
 
-- `backend/.env` and any real API keys (FDC, Anthropic).
-- `~/.recetario/` — the SQLite DB, Google OAuth client secret, token-encryption key.
+- `backend/.env` and any real API key (Anthropic).
+- `~/.recetario/` — your `config.json` and the Anthropic key in `.env`.
 - `*.db`, build artifacts (`backend/dist/`, `backend/build/`, `desktop/src-tauri/binaries/`,
   `target/`), `node_modules/`, `.claude/settings.local.json`.
 
 When staging, add files **by name** — avoid `git add -A`, which sweeps up artifacts and secrets.
-The frozen sidecar binary is large and machine-specific; it's regenerated per-build, never
-committed (see [`desktop/scripts/build-sidecar.sh`](desktop/scripts/build-sidecar.sh)).
+The frozen import-helper binary is large and machine-specific; it's regenerated per-build, never
+committed (see [`desktop/scripts/build-helper.sh`](desktop/scripts/build-helper.sh)).
 
 ## Releases (when the time comes)
 

@@ -153,18 +153,23 @@ The current **~155 tests are the spec**, not throwaway:
 
 ## 7. Rough re-platform sequencing (one decisive arc, test-gated)
 
-1. **TS core skeleton + domain + services**, ported from Python with vitest tests
+_Status: all steps complete. Step 6 was cancelled (no data to migrate)._
+
+1. ✅ **TS core skeleton + domain + services**, ported from Python with vitest tests
    green (proves the cheap 80% moves cleanly).
-2. **Flat-file storage in TS** (frontmatter/yaml repos, UUID identity, atomic write,
+2. ✅ **Flat-file storage in TS** (frontmatter/yaml repos, UUID identity, atomic write,
    best-effort parse) + tests against a temp dir.
-3. **Wire the desktop UI to the TS core** (direct file access via Tauri fs plugin;
+3. ✅ **Wire the desktop UI to the TS core** (direct file access via Tauri fs plugin;
    add fs capability). Remove the HTTP client.
-4. **Python helper**: reduce the backend to the ingestion CLI/JSON-RPC binary; wire
+4. ✅ **Python helper**: reduce the backend to the ingestion CLI/JSON-RPC binary; wire
    Tauri to invoke it for import (URL/video/from-html). Keep #26 WebView capture.
-5. **Settings folder picker** (Tauri dialog plugin) + `config.json` data dir.
-6. **One-shot migration** from the existing SQLite → files (a Python helper command
-   or a TS importer), int→UUID remap for cross-references.
-7. **Delete** FastAPI/SQLAlchemy/Alembic/owner_id; rewrite `DESIGN.md`.
+5. ✅ **Settings folder picker** (Tauri dialog plugin) + `config.json` data dir.
+6. ⏭️ **~~One-shot migration~~ — SKIPPED.** The old SQLite DB held no user data (0
+   recipes/meals/lists; only the seeded USDA catalog, which v2 abandons), so there
+   was nothing to migrate. `~/.recetario/recetario.db` is inert and can be deleted
+   by hand.
+7. ✅ **Delete** FastAPI/SQLAlchemy/Alembic/owner_id (+ Google export, USDA stack);
+   rewrote `DESIGN.md` and the READMEs. `backend/` is now only the import helper.
 
 ## 8. Open questions to resolve before building
 

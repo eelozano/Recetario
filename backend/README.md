@@ -1,35 +1,47 @@
-# Recetario — Backend (core API)
+# Recetario — Import helper (`recetario-helper`)
 
-The headless Python core of Recetario: a **FastAPI JSON API** over `localhost` that owns all the
-business logic and data. The desktop UI (and any future web/mobile client) is just an HTTP client
-of this server.
+The **only** Python left in Recetario. It's an on-demand sidecar that turns a recipe URL, a video
+link, or a captured page into a structured *draft recipe* and prints it as JSON. It does **pure
+extraction** — no storage, no database, no macros lookup. The TypeScript core (`@recetario/core`)
+owns persistence; this binary just parses.
 
-Built with **Clean Architecture / ports & adapters** — the dependency rule points inward only, so
-the domain logic has no idea FastAPI or SQLAlchemy exist.
+The desktop app spawns it once and keeps it warm, exchanging newline-delimited JSON over
+stdin/stdout (see `serve` below). Everything else from the old FastAPI backend — the HTTP API,
+SQLAlchemy/SQLite, USDA nutrition, Google Tasks export, the `owner_id` seam — was removed in the
+Architecture v2 migration.
 
-## Architecture
+## What it does
 
 ```
-api/             Presentation: thin FastAPI routers + Pydantic schemas + composition root (deps.py)
-  └─ depends on
-application/     Use cases (interactors) + ports (Protocol interfaces) + DTOs
-  └─ depends on
-domain/          Pure entities, value objects, services (MacroCalculator, ShoppingAggregator).
-                   No framework imports. 100% unit-testable with plain pytest.
-
-infrastructure/  Adapters implementing the ports — swappable without touching the inner layers:
-  db/              SQLAlchemy models + repositories (owner-scoped)
-  nutrition/       USDA FoodData Central client + seeder
-  llm/             Anthropic recipe extractor (structured output / tool use)
-  scraping/        recipe-scrapers / JSON-LD web adapter
-  video/           yt-dlp caption/transcript fetcher
-  export/          Google Tasks connector
-  security/        Fernet token encryption for stored OAuth credentials
+src/recetario/
+  cli/import_helper.py            The CLI: from-url · from-video · from-html · serve
+  infrastructure/
+    scraping/recipe_scraper.py    recipe-scrapers / JSON-LD + microdata, httpx fetch
+    video/transcript_fetcher.py   yt-dlp caption/subtitle fetch + parse
+    llm/recipe_extractor.py       Anthropic structured extraction / ingredient structuring
+    config.py                     Anthropic key + model, read from env / ~/.recetario/.env
+  application/dto, application/ports, domain/entities
+                                  the draft-recipe shapes the pipeline maps onto (RecipeInput …)
+helper.py                         frozen entry point (PyInstaller analyses this)
+packaging/recetario-helper.spec   one-file PyInstaller spec
 ```
 
-The **composition root** lives in `api/deps.py`: it wires concrete adapters into use cases via
-FastAPI `Depends`, reading factories off `app.state`. Tests override those factories to stay
-hermetic and offline.
+A well-structured page imports with **no** API key (the deterministic recipe-scrapers pass). The
+Anthropic key only unlocks the LLM fallback (pages with no parseable schema), ingredient
+structuring, and video transcripts.
+
+## CLI
+
+```
+from-url    { "url": "https://…" }                 -> { recipe: <draft> } | { error }
+from-video  { "url": "https://youtu.be/…" }         -> { recipe: <draft> } | { error }
+from-html   { "url": "…", "html": "<…>" }           -> { recipe: <draft> } | { error }
+serve       (NDJSON requests on stdin → responses)  long-lived; exits on EOF (app quit)
+```
+
+In `serve` mode each stdin line is a JSON request `{ "id", "command", ...params }` and each stdout
+line is `{ "id", "ok", "recipe" | "error" }`. A bad request never kills the loop — the process
+stays warm for the next import.
 
 ## Setup
 
@@ -38,111 +50,51 @@ Requires **Python 3.11+**.
 ```bash
 cd backend
 python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'        # app + test deps
-.venv/bin/alembic upgrade head           # build the schema (default: ~/.recetario/recetario.db)
+.venv/bin/pip install -e '.[dev]'        # helper + test deps
 ```
-
-## Running the API
-
-```bash
-# From backend/ — note PYTHONPATH=src for bare runs (the package lives under src/)
-PYTHONPATH=src .venv/bin/python -m uvicorn recetario.api.main:app --reload --port 8765
-```
-
-- Health check: `curl http://127.0.0.1:8765/health` → `{"status":"ok"}`
-- Interactive API docs: <http://127.0.0.1:8765/docs>
-- OpenAPI schema: <http://127.0.0.1:8765/openapi.json> (the desktop client is generated from this)
-
-There is also `server.py`, the **sidecar entry point** used by the packaged desktop app: it runs
-`alembic upgrade head` itself and then starts uvicorn. It is what gets frozen into the single-file
-binary (see [Packaging](#packaging)).
-
-## API surface
-
-| Router                | Responsibility                                                      |
-| --------------------- | ------------------------------------------------------------------ |
-| `health`              | Liveness probe                                                     |
-| `recipes`             | CRUD for recipes, ingredients, tags; draft→finalize flow          |
-| `nutrition`           | USDA lookups + per-ingredient macro breakdown for a recipe        |
-| `ingestion`           | Import-from-URL/video jobs (async worker) + status polling        |
-| `meals`               | Weekly meal calendar (`meal_events`) + aggregated macro totals    |
-| `shopping`            | Generate aggregated shopping lists from a week; check-off items   |
-| `integrations`        | Google Tasks OAuth + idempotent shopping-list export             |
 
 ## Configuration
 
-Settings are read from `RECETARIO_*` environment variables or a `backend/.env` file
-(`src/recetario/infrastructure/config.py`). All have working defaults.
+Only the Anthropic credentials, read from `RECETARIO_*` env vars or `~/.recetario/.env`
+(`src/recetario/infrastructure/config.py`):
 
-| Variable                              | Default                                        | Purpose                                                                 |
-| ------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------- |
-| `RECETARIO_DATABASE_URL`              | `sqlite:///~/.recetario/recetario.db`          | **The single knob that switches SQLite ↔ Postgres.**                    |
-| `RECETARIO_API_HOST` / `_API_PORT`    | `127.0.0.1` / `8765`                           | Where the API binds.                                                    |
-| `RECETARIO_FDC_API_KEY`               | _unset_                                        | USDA FoodData Central key — needed only for the nutrition seeder/lookups. |
-| `RECETARIO_ANTHROPIC_API_KEY`         | _unset_                                        | Enables the LLM ingestion pass. Absent → deterministic scraper only.    |
-| `RECETARIO_ANTHROPIC_MODEL`           | `claude-sonnet-4-6`                            | Model tier for ingestion.                                               |
-| `RECETARIO_GOOGLE_CLIENT_SECRET_FILE` | `~/.recetario/google_client_secret.json`       | OAuth "Desktop app" credential for Google Tasks export.                 |
-| `RECETARIO_TOKEN_KEY_FILE`            | `~/.recetario/token.key`                       | Local Fernet key encrypting stored OAuth tokens at rest.                |
+| Variable                      | Default             | Purpose                                                       |
+| ----------------------------- | ------------------- | ------------------------------------------------------------- |
+| `RECETARIO_ANTHROPIC_API_KEY` | _unset_             | Enables the LLM pass. Absent → deterministic scraper only.    |
+| `RECETARIO_ANTHROPIC_MODEL`   | `claude-sonnet-4-6` | Model tier for extraction/structuring.                        |
 
-> **Secrets are never committed.** `.env`, `*.db`, and `~/.recetario/` are gitignored. API keys
-> live in `backend/.env`; the Google client secret lives under `~/.recetario/` (outside the repo).
-
-## Database & migrations
-
-- **Alembic from day one.** Migrations are versioned in `alembic/versions/`; `alembic upgrade head`
-  builds the current schema (head revision `f2a6d5e8c1b4`).
-- Schema is designed to map cleanly to both SQLite and Postgres — the SQLite→Postgres switch is
-  config-only (`RECETARIO_DATABASE_URL`).
-- A nullable/defaulted `owner_id` scopes every business table, so multi-user is an **additive**
-  change later (the repositories already isolate by owner; only `api/deps.get_owner_id` needs to
-  change).
+> **Secrets are never committed.** `.env` and `~/.recetario/` are gitignored; set the key by hand in
+> `~/.recetario/.env` (0600).
 
 ## Testing
 
 ```bash
-.venv/bin/pytest                          # default: hermetic, in-memory SQLite, no network
+.venv/bin/pytest                          # hermetic — no live USDA/Anthropic/network calls
 ```
 
-The suite is **offline by default** — LLM/USDA/Google calls are mocked, and the DB is in-memory
-SQLite. Layers:
+The suite mocks the Anthropic client and uses recorded HTML/transcript fixtures:
 
-- `tests/unit/` — pure domain/application logic (macro math, aggregation), no DB.
-- `tests/integration/` — repositories against a real engine.
-- `tests/api/` — FastAPI `TestClient` per router.
-
-### Opt-in Postgres validation
-
-The same tests can run against Postgres to prove the swap, without imposing Postgres on everyday
-runs:
-
-```bash
-# Throwaway Postgres
-docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
-
-# Point the suite at it — the same tests now exercise Postgres
-RECETARIO_TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/postgres \
-    .venv/bin/pytest
-```
-
-`tests/integration/test_postgres_migrations.py` additionally runs `alembic upgrade head` from an
-empty database and asserts the full schema — validating the migration chain itself, not just
-`create_all`. It skips unless `RECETARIO_TEST_DATABASE_URL` is set.
+- `tests/unit/test_import_helper.py` — the CLI/JSON contract (payload shape, the `serve` loop,
+  no-key error paths).
+- `tests/unit/test_scraper_mapping.py` — recipe-scrapers → draft mapping (deterministic).
+- `tests/unit/test_llm_extractor_mapping.py` — Anthropic structured output → draft.
+- `tests/unit/test_transcript_fetcher.py` — yt-dlp caption parsing.
 
 ## Packaging (sidecar binary)
 
-For the desktop app, the backend is frozen into a single-file binary with PyInstaller:
+The helper is frozen into a single-file binary with PyInstaller and staged for Tauri:
 
 ```bash
 .venv/bin/pip install -e '.[build]'       # adds pyinstaller
-# Usually invoked via desktop/scripts/build-sidecar.sh, which stages the output for Tauri:
-.venv/bin/pyinstaller packaging/recetario-server.spec --noconfirm --distpath dist --workpath build/pyi
+# Usually invoked via desktop/scripts/build-helper.sh, which stages the output for Tauri:
+.venv/bin/pyinstaller packaging/recetario-helper.spec
 ```
 
-The spec bundles the `alembic/` migrations and the `yt_dlp` dependency (so video-URL ingestion
-works in the packaged app). The frozen binary self-migrates on launch. See
-[`desktop/README.md`](../desktop/README.md) for how Tauri spawns it.
+The spec bundles recipe-scrapers, mf2py, anthropic, and yt-dlp. See
+[`desktop/README.md`](../desktop/README.md) for how Tauri spawns the staged binary, and the project
+[`CLAUDE.md`](../CLAUDE.md) for when a rebuild (`build-helper.sh`) is actually needed.
 
 ## Dependency extras
 
-- `.[dev]` — pytest + `psycopg[binary]` (the Postgres driver, used by the opt-in validation path).
+- `.[dev]` — pytest.
 - `.[build]` — pyinstaller (build-time only; not needed at runtime).

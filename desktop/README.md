@@ -1,34 +1,41 @@
 # Recetario — Desktop (Tauri + React)
 
 The desktop shell for Recetario: a **Tauri v2** app wrapping a **React + TypeScript** UI built with
-Vite. It is a *thin client* — it holds no business rules, just views and `fetch` calls against the
-backend's local JSON API.
+Vite. There is **no backend server** — the UI reads and writes recipes, the meal calendar, and
+shopping lists as flat files via [`@recetario/core`](../core/) and the Tauri filesystem plugin.
 
-In a packaged build the shell launches the Python backend as a bundled **sidecar binary**, so the
-whole thing is a single double-click app with no separate terminal.
+The one piece of Python is the **import helper**: a frozen sidecar the app spawns on demand to turn
+a URL/video/captured page into a draft recipe. See [`../backend/README.md`](../backend/README.md).
 
-## How it talks to the backend
-
-The UI calls `http://127.0.0.1:8765` (the local FastAPI core). The API client is **generated from
-the backend's OpenAPI schema** (`openapi-fetch` + `openapi-typescript`), so the contract is typed
-end to end — change a router in the backend, regenerate, and TypeScript catches the drift.
+## How it's wired
 
 ```
 src/
-  api/            Generated typed client (schema.d.ts) + fetch wrapper
-  pages/          Top-level views (recipes, meal calendar, shopping, import…)
-  components/     Reusable UI pieces
-  App.tsx         Shell, routing, data refresh
-src-tauri/        Rust shell: spawns + supervises the backend sidecar, kills it on exit
+  data/
+    repos.ts        Composition root: resolves the data dir (via Rust), builds the core repos
+    tauri-fs.ts     FileSystem port → @tauri-apps/plugin-fs adapter
+    import.ts       Persistent import-helper client (NDJSON over stdio) → core Recipe
+  pages/            Top-level views (recipes, calendar, shopping, settings…)
+  components/        Reusable UI pieces (ImportRecipe…)
+  App.tsx           Shell, view switching, data refresh
+src-tauri/
+  src/lib.rs        Rust shell: fs/dialog/shell plugins, data-dir commands, import-browser capture
+  src/config.rs     Reads/writes ~/.recetario/config.json (the chosen data dir)
+  capabilities/      fs scope + the import-helper spawn permission
 scripts/
-  build-sidecar.sh  Freezes the backend and stages it for Tauri's externalBin
+  build-helper.sh   Freezes the import helper and stages it for Tauri's externalBin
 ```
+
+The business logic lives in `@recetario/core` (entities, `MacroCalculator`, `ShoppingAggregator`,
+`MealPlanner`, flat-file repositories). The shell only injects a Tauri-backed `FileSystem` adapter
+and renders views. Data lands under the folder chosen in Settings (default
+`~/Documents/Recetario/data`, stored in `~/.recetario/config.json`).
 
 ## Prerequisites
 
 - **Node 18+**
 - **Rust toolchain** (`rustc`, `cargo`) — required by Tauri
-- The **backend** set up (see [`../backend/README.md`](../backend/README.md))
+- **Python 3.11+** — only to (re)build the import helper (see backend README)
 
 ```bash
 cd desktop
@@ -37,55 +44,43 @@ npm install
 
 ## Development
 
-Two ways to run, depending on whether you want the backend bundled.
-
-### A. UI against a manually-run backend (fastest iteration)
-
-Start the backend yourself (see the backend README), then:
-
 ```bash
-npm run tauri dev      # or `npm run dev` for the UI in a plain browser at http://localhost:1420
+npm run tauri dev      # builds @recetario/core, runs the desktop app against your data folder
+# or:
+npm run dev            # the UI alone in a browser at http://localhost:1420 (no Tauri APIs)
 ```
 
-### B. Full packaged-style run (backend bundled as a sidecar)
-
-First freeze the backend into the platform binary Tauri expects, then run/build:
+Recipe import needs the helper binary staged once (it's gitignored / machine-specific):
 
 ```bash
-./scripts/build-sidecar.sh     # stages src-tauri/binaries/recetario-server-<target-triple>
-npm run tauri dev              # or: npm run tauri build  → a distributable double-click app
+./scripts/build-helper.sh     # stages src-tauri/binaries/recetario-helper-<target-triple>
 ```
 
-`build-sidecar.sh` resolves your Rust host target triple, runs PyInstaller against the backend, and
-copies the binary to the name Tauri's `externalBin` looks for. Re-run it on each machine/architecture
-and whenever the backend changes. The Rust shell (`src-tauri/src/lib.rs`) spawns this sidecar on
-startup and terminates it when the window closes.
+Re-run `build-helper.sh` on each machine/architecture and whenever the helper's **Python** changes.
+A normal UI/Rust change does **not** need it — `npm run tauri build` reuses the staged binary.
 
-## Regenerating the API client
-
-When the backend's API changes, refresh the typed client:
+## Building a distributable
 
 ```bash
-# 1. Export the schema from a running backend:
-curl http://127.0.0.1:8765/openapi.json -o src/api/openapi.json
-# 2. Regenerate the TypeScript types:
-npm run gen:api
+npm run tauri build           # → src-tauri/target/release/bundle/{macos,dmg}/
 ```
+
+After a rebuild, **Cmd+Q the running app and reopen** the fresh bundle — `open App.app` just
+re-focuses the old instance. See [`../CLAUDE.md`](../CLAUDE.md) for the full test loop.
 
 ## Scripts
 
-| Command               | What it does                                              |
-| --------------------- | -------------------------------------------------------- |
-| `npm run dev`         | Vite dev server (UI only, in a browser)                  |
-| `npm run build`       | Type-check + production UI build                         |
-| `npm run tauri dev`   | Run the desktop app                                      |
-| `npm run tauri build` | Build a distributable desktop bundle                     |
-| `npm run gen:api`     | Regenerate the typed API client from `src/api/openapi.json` |
+| Command               | What it does                                          |
+| --------------------- | ---------------------------------------------------- |
+| `npm run dev`         | Vite dev server (UI only, in a browser)              |
+| `npm run build`       | Build `@recetario/core` + type-check + production UI build |
+| `npm run tauri dev`   | Run the desktop app                                  |
+| `npm run tauri build` | Build a distributable desktop bundle                 |
 
 ## Notes
 
-- `src-tauri/binaries/` (the staged sidecar) and `dist/` are gitignored — they're large and
-  machine-specific, regenerated by `build-sidecar.sh`.
+- `src-tauri/binaries/` (the staged helper) and `dist/` are gitignored — large and
+  machine-specific, regenerated by `build-helper.sh` / the build.
 - Recommended IDE setup: [VS Code](https://code.visualstudio.com/) +
   [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) +
   [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).

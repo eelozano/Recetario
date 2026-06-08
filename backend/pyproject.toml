@@ -1,35 +1,23 @@
 [project]
 name = "recetario"
 version = "0.1.0"
-description = "Local-first recipe & meal-planning app — headless core API"
+description = "Recetario recipe-import helper — recipe-scrapers / yt-dlp / Claude extraction sidecar"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.110",
-    "uvicorn[standard]>=0.29",
-    "sqlalchemy>=2.0",
-    "alembic>=1.13",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "httpx>=0.27",
     "recipe-scrapers>=15.0",
     "anthropic>=0.40",
     "yt-dlp>=2024.0",
-    "cryptography>=42.0",
-    "google-auth>=2.30",
-    "google-auth-oauthlib>=1.2",
-    "google-api-python-client>=2.130",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    # Postgres driver — only used when RECETARIO_TEST_DATABASE_URL points the
-    # suite at Postgres to validate the SQLite→Postgres swap. The same driver is
-    # what a future hosted deployment would use at runtime.
-    "psycopg[binary]>=3.1",
 ]
-# Build-time only: freezes server.py into the single-file sidecar binary that
-# Tauri ships. Not needed at runtime. See packaging/recetario-server.spec.
+# Build-time only: freezes helper.py into the single-file sidecar binary that
+# Tauri ships. Not needed at runtime. See packaging/recetario-helper.spec.
 build = [
     "pyinstaller>=6.0",
 ]

@@ -1,70 +1,80 @@
 # Recetario
 
 A **local-first desktop recipe & meal-planning app** for a single user. Import recipes from a URL
-or video, see exactly which ingredient drives each macro, plan a week of meals, generate an
-aggregated shopping list, and push it to Google Tasks — all running on your own machine against a
-local database.
+or video, record per-serving macros, plan a week of meals, and generate an aggregated shopping
+list — all on your own machine, stored as plain files you own.
 
-Recetario is built so the same core can later be lifted into a hosted web or mobile product with
-minimal refactoring. The whole app is structured around **Clean Architecture / ports & adapters**:
-the business logic (macro math, grocery aggregation, recipe parsing) and data access are isolated
-from the presentation layer, so "going web" is mostly a config change and "going mobile" is just a
-new client against the same API.
+There is **no server and no database**. The app is a Tauri + React shell on top of a portable
+TypeScript core (`@recetario/core`) that holds all the logic (macro math, grocery aggregation,
+serialization) and reads/writes flat files. The same core is what a future mobile client would
+reuse — not an HTTP API.
 
-See [`DESIGN.md`](DESIGN.md) for the full design specification and the rationale behind every
-decision.
+See [`DESIGN.md`](DESIGN.md) for the full architecture and the rationale behind each decision.
 
 ## How it fits together
 
 ```
-┌──────────────────────────────┐        HTTP / JSON over          ┌──────────────────────────────┐
-│  desktop/   Tauri + React UI  │  ───── http://127.0.0.1:8765 ──▶ │  backend/   FastAPI core API  │
-│  (thin client — no business   │                                  │  (domain + use cases + DB)    │
-│   rules, just views & fetch)  │ ◀────────────────────────────    │                               │
-└──────────────────────────────┘                                  └──────────────────────────────┘
+┌─────────────────────────────────────────────┐     spawns on demand     ┌────────────────────────┐
+│  desktop/   Tauri + React UI                  │  ───────────────────────▶│  recetario-helper       │
+│  └─ @recetario/core  (entities, services,     │   (NDJSON over stdio)     │  Python import sidecar  │
+│     flat-file storage)  ─▶  ~/…/Recetario/    │ ◀───────────────────────  │  recipe-scrapers/yt-dlp │
+│        recipes/  meal-calendar/  shopping/    │     draft recipe JSON     │  /Claude extraction     │
+└─────────────────────────────────────────────┘                           └────────────────────────┘
 ```
 
-- **[`backend/`](backend/README.md)** — the headless Python core: FastAPI JSON API, domain logic,
-  SQLAlchemy/SQLite persistence, USDA nutrition, LLM ingestion, Google Tasks export. This is where
-  all the business logic lives, and it is fully usable on its own (it's just an HTTP server).
-- **[`desktop/`](desktop/README.md)** — the Tauri desktop shell wrapping a React + TypeScript UI.
-  In a packaged build it launches the backend as a bundled **sidecar binary**, so the whole thing
-  is a single double-click app with no separate terminal.
+- **[`core/`](core/)** — `@recetario/core`: framework-free TypeScript entities, domain services
+  (`MacroCalculator`, `ShoppingAggregator`, `MealPlanner`), and flat-file repositories behind a
+  small `FileSystem` port. Pure and unit-tested with vitest; Node-/React-Native-safe.
+- **[`desktop/`](desktop/README.md)** — the Tauri v2 shell + React/TypeScript UI. Injects a Tauri
+  filesystem adapter into the core and reads/writes the data folder directly. No HTTP client.
+- **[`backend/`](backend/README.md)** — **only** the `recetario-helper` import sidecar: a frozen
+  Python CLI that turns a URL/video/captured page into a draft recipe (recipe-scrapers, yt-dlp,
+  Claude) and prints JSON. It owns no storage; the TS core persists the result.
+
+## Data
+
+Everything lives as human-readable files under a folder you choose in Settings (default
+`~/Documents/Recetario/data`, override saved in `~/.recetario/config.json`):
+
+```
+recipes/{slug}-{short8}.md            # YAML frontmatter + Markdown body
+meal-calendar/meal-calendar-YYYY-MM.yaml
+shopping-lists/shopping-{uuid}.yaml
+```
+
+Point the folder at Dropbox/iCloud Drive to sync across machines. Atomic writes; best-effort parse
+(a hand-edited file never crashes the app).
 
 ## Quick start (development)
 
-You need **Python 3.11+**, **Node 18+**, and the **Rust toolchain** (for Tauri).
+You need **Node 18+** and the **Rust toolchain** (for Tauri). Python is needed only to (re)build the
+import helper.
 
 ```bash
-# 1. Backend — start the local API
-cd backend
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/alembic upgrade head            # build the SQLite schema at ~/.recetario/recetario.db
-PYTHONPATH=src .venv/bin/python -m uvicorn recetario.api.main:app --port 8765
-
-# 2. Desktop — in a second terminal, run the UI against that API
 cd desktop
 npm install
-npm run tauri dev
+npm run tauri dev        # builds @recetario/core, runs the UI against your data folder
 ```
 
-For a **packaged double-click app** (backend frozen into the Tauri bundle), see
+For a **packaged double-click app** (with the frozen import helper bundled in), see
 [`desktop/README.md`](desktop/README.md).
 
 ## Project status
 
-All seven roadmap phases are complete: local recipe core → USDA macros → LLM ingestion (web +
-video) → weekly meal calendar → aggregated shopping lists → Google Tasks export → hardening &
-cloud-readiness (owner-scoping seam, opt-in Postgres validation, packaged sidecar). See the
-roadmap in [`DESIGN.md` §4](DESIGN.md).
+Architecture v2 is complete: a portable TS core + flat-file storage replaced the original
+FastAPI/SQLite backend; the only Python left is the on-demand import helper. Recipe import (URL,
+video, and in-app browser capture) works; macros are entered by hand. See [`DESIGN.md`](DESIGN.md)
+for the design and `docs/architecture-v2-proposal.md` for the migration history.
 
 ## Repository layout
 
 ```
 Recetario/
-  DESIGN.md          Full design spec, schema, roadmap, verification strategy
-  backend/           Python FastAPI core (domain · application · infrastructure · api)
+  DESIGN.md          Architecture, data layout, verification strategy
+  core/              @recetario/core — TS entities, services, flat-file storage (vitest)
   desktop/           Tauri + React + TypeScript shell and UI
+  backend/           recetario-helper — the Python import sidecar (recipe-scrapers/yt-dlp/Claude)
+  docs/              Design notes, including the Architecture v2 migration proposal
 ```
 
 ## Contributing
@@ -74,7 +84,8 @@ Development follows **GitHub Flow** — branch per change, PR linked to its issu
 
 ## Configuration & secrets
 
-The backend is configured via `RECETARIO_*` environment variables (or a `backend/.env` file). All
-have working defaults; the optional integrations need keys you supply yourself. **Secrets are never
-committed** — `.env`, `*.db`, and `~/.recetario/` are gitignored. See
-[`backend/README.md`](backend/README.md#configuration) for the full list.
+The data folder is chosen in Settings (stored in `~/.recetario/config.json`). The import helper
+reads an optional Anthropic key from `~/.recetario/.env` (`RECETARIO_ANTHROPIC_API_KEY`) — a
+well-structured page imports with **no** key; the key only unlocks the LLM fallback, ingredient
+structuring, and video. **Secrets are never committed** — `.env`, `*.db`, and `~/.recetario/` are
+gitignored.

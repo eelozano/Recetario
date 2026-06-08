@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  ShoppingListStatus,
-  type ShoppingList,
-  type ShoppingListItem,
-} from "@recetario/core";
+import type { ShoppingList, ShoppingListItem } from "@recetario/core";
 import { getRepos } from "../data/repos";
 import { generateShoppingList } from "../data/queries";
 import { formatQuantity } from "../api/format";
@@ -197,7 +193,6 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
   const items = list.items ?? [];
   const { total, checked } = counts(list);
   const pct = total ? Math.round((checked / total) * 100) : 0;
-  const exported = list.status === ShoppingListStatus.EXPORTED;
 
   return (
     <div className="shop-detail">
@@ -206,7 +201,6 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
           <h1>{list.name}</h1>
           <p className="detail__meta muted">
             {rangeLabel(list.weekStart, list.weekEnd)} · {checked}/{total} checked
-            {exported && <span className="pill pill--finalized">exported</span>}
           </p>
         </div>
         <div className="shop-detail__actions">
@@ -215,11 +209,6 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
           </button>
         </div>
       </header>
-
-      <p className="muted shop-detail__hint">
-        Google Tasks export returns once the ingestion/export helper is wired back up
-        in a later step.
-      </p>
 
       {total > 0 && (
         <div className="progress">

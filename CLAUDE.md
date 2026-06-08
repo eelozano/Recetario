@@ -38,8 +38,10 @@ npm run tauri build            # → src-tauri/target/release/bundle/{macos,dmg}
 
 Anthropic key lives at `~/.recetario/.env` (`RECETARIO_ANTHROPIC_API_KEY`),
 absolute path, 0600. A well-structured page imports with **no** key; the key only
-unlocks the LLM fallback, ingredient structuring, and video. The in-app Settings
-page is a stub until step 5 (folder picker + `config.json`); set keys by hand.
+unlocks the LLM fallback, ingredient structuring, and video. **Set the key by hand**
+— the in-app Settings page (step 5) picks the data folder (saved in
+`~/.recetario/config.json`, a custom dir unlocked at runtime via the fs scope) but
+has no key field yet.
 
 ## Security (binding)
 

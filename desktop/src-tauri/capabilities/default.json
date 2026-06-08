@@ -26,6 +26,7 @@
         { "name": "binaries/recetario-helper", "sidecar": true, "args": ["serve"] }
       ]
     },
-    "shell:allow-stdin-write"
+    "shell:allow-stdin-write",
+    "dialog:allow-open"
   ]
 }

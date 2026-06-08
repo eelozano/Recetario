@@ -3,11 +3,11 @@
  * `<baseDir>/shopping-lists/shopping-{uuid}.yaml`.
  *
  * The filename embeds the full UUID, so reads/deletes are direct (no scan). The
- * whole list is rewritten on any change (small file; keeps check-off state and
- * export ids in one place). Depends only on the FileSystem port.
+ * whole list is rewritten on any change (small file; keeps check-off state in
+ * one place). Depends only on the FileSystem port.
  */
 import type { Id } from "../identity";
-import { type ShoppingList, ShoppingListStatus } from "../entities/shopping";
+import type { ShoppingList } from "../entities/shopping";
 import { atomicWrite, type FileSystem, joinPath } from "./fs";
 import { newId } from "./id";
 import { shoppingListFromYaml, shoppingListToYaml } from "./shopping-serialization";
@@ -37,7 +37,6 @@ export class ShoppingListRepository {
     const list: ShoppingList = {
       ...input,
       id: input.id ?? newId(),
-      status: input.status ?? ShoppingListStatus.DRAFT,
       generatedAt: input.generatedAt ?? now,
       createdAt: input.createdAt ?? now,
       updatedAt: now,

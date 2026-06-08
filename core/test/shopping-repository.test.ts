@@ -5,11 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Decimal } from "decimal.js";
 
-import {
-  ShoppingListRepository,
-  ShoppingListStatus,
-  type ShoppingList,
-} from "../src/index";
+import { ShoppingListRepository, type ShoppingList } from "../src/index";
 import { NodeFileSystem } from "../src/storage/adapters/node-fs";
 
 const fs = new NodeFileSystem();
@@ -47,7 +43,6 @@ describe("ShoppingListRepository", () => {
     const saved = await repo.create(sampleList());
 
     expect(saved.id).toMatch(/[0-9a-f-]{36}/);
-    expect(saved.status).toBe(ShoppingListStatus.DRAFT);
     expect(saved.generatedAt).toBeTruthy();
 
     const files = await readdir(join(base, "shopping-lists"));
@@ -71,19 +66,12 @@ describe("ShoppingListRepository", () => {
     expect(names).toEqual(["Groceries — Week of 2026-06-08", "Second list"]);
   });
 
-  it("persists check-off and export state on update", async () => {
+  it("persists check-off state on update", async () => {
     const saved = await repo.create(sampleList());
     const items = saved.items!.map((it, i) => (i === 0 ? { ...it, checked: true } : it));
-    await repo.update({
-      ...saved,
-      status: ShoppingListStatus.EXPORTED,
-      externalTasklistId: "tasklist-123",
-      items,
-    });
+    await repo.update({ ...saved, items });
 
     const loaded = await repo.getById(saved.id!);
-    expect(loaded!.status).toBe(ShoppingListStatus.EXPORTED);
-    expect(loaded!.externalTasklistId).toBe("tasklist-123");
     expect(loaded!.items![0].checked).toBe(true);
     expect(loaded!.items![1].checked).toBe(false);
   });

@@ -14,6 +14,9 @@
 //! reach); an injected button hands the rendered HTML back to the app.
 
 use tauri::{Listener, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_fs::FsExt;
+
+mod config;
 
 /// Label of the throwaway in-app browser used to import bot-protected pages.
 const CAPTURE_LABEL: &str = "recipe-capture";
@@ -82,17 +85,82 @@ fn open_recipe_capture(app: tauri::AppHandle, url: String) -> Result<(), String>
     Ok(())
 }
 
+/// Extend the fs plugin's runtime scope to a directory (and its subtree) so the
+/// frontend can read/write a data dir outside the static capability scope. The
+/// plugin allows a path when EITHER the capability scope or this runtime scope
+/// permits it (tauri-plugin-fs `resolve_path`), so this is how a user-picked
+/// folder becomes usable.
+fn allow_data_dir(app: &tauri::AppHandle, dir: &str) -> Result<(), String> {
+    app.fs_scope()
+        .allow_directory(dir, true)
+        .map_err(|e| format!("Could not grant access to {dir}: {e}"))
+}
+
+/// The active data dir (configured override or the default), as an absolute path.
+#[tauri::command]
+fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    Ok(config::effective_data_dir(&app)?.to_string_lossy().into_owned())
+}
+
+/// The default data dir, regardless of any override. Settings compares it against
+/// the active dir to decide whether a "Reset to default" control is meaningful.
+#[tauri::command]
+fn get_default_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    Ok(config::default_data_dir(&app)?.to_string_lossy().into_owned())
+}
+
+/// Point the app at a new data dir: unlock it in the fs scope and persist it.
+/// Returns the stored path. The caller reloads so the repositories rebuild.
+#[tauri::command]
+fn set_data_dir(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Please choose a folder.".into());
+    }
+    allow_data_dir(&app, trimmed)?;
+    let mut cfg = config::load(&app);
+    cfg.data_dir = Some(trimmed.to_string());
+    config::save(&app, &cfg)?;
+    Ok(trimmed.to_string())
+}
+
+/// Clear the override so the app falls back to the default data dir. Returns the
+/// default path. The caller reloads so the repositories rebuild.
+#[tauri::command]
+fn reset_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    let mut cfg = config::load(&app);
+    cfg.data_dir = None;
+    config::save(&app, &cfg)?;
+    Ok(config::default_data_dir(&app)?.to_string_lossy().into_owned())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         // Flat-file data store (Architecture v2, step 3): the React data layer
         // reads/writes recipes, calendar, and shopping files through this plugin,
         // scoped to the data dir by capabilities/default.json.
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![open_recipe_capture])
+        .invoke_handler(tauri::generate_handler![
+            open_recipe_capture,
+            get_data_dir,
+            get_default_data_dir,
+            set_data_dir,
+            reset_data_dir
+        ])
         .setup(|app| {
+            // A custom data dir (step 5) lives outside the static fs scope, so
+            // unlock it before the webview loads and touches the filesystem.
+            if let Some(dir) = config::load(app.handle()).data_dir {
+                if !dir.trim().is_empty() {
+                    if let Err(e) = allow_data_dir(app.handle(), &dir) {
+                        eprintln!("[recetario] {e}");
+                    }
+                }
+            }
             // Close the import browser once it has handed back the page HTML.
             // The main window's React also receives this event (it's a global
             // emit) and turns it into a from-html import job.

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./App.css";
+import { useRefreshOnFocus } from "./hooks/useRefreshOnFocus";
 import { ImportRecipe } from "./components/ImportRecipe";
 import { RecipeList } from "./pages/RecipeList";
 import { RecipeDetail } from "./pages/RecipeDetail";
@@ -20,6 +21,13 @@ function App() {
   // and the calendar's recipe picker.
   const [listVersion, setListVersion] = useState(0);
   const refreshList = () => setListVersion((v) => v + 1);
+
+  // Live FS refresh (#51): when the window regains focus, re-read the data folder
+  // so changes a sync client landed in the background show up without a manual
+  // reload. This drives the read-only list views (recipes, calendar, shopping);
+  // an open recipe's detail intentionally keeps its in-progress edits and only
+  // re-reads when reselected.
+  useRefreshOnFocus(refreshList);
 
   return (
     <div className="app">

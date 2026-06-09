@@ -6,5 +6,8 @@
   "workspaces": [
     "core",
     "desktop"
-  ]
+  ],
+  "engines": {
+    "node": ">=24"
+  }
 }

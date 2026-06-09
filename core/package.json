@@ -28,12 +28,11 @@
   "dependencies": {
     "decimal.js": "^10.4.3",
     "js-yaml": "^4.1.0",
-    "uuid": "^9.0.1"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.0",
-    "@types/uuid": "^9.0.8",
     "typescript": "~5.8.3",
     "vitest": "^4.0.0"
   }

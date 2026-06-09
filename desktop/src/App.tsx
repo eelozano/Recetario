@@ -1,6 +1,7 @@
 import { useState } from "react";
 import "./App.css";
 import { useRefreshOnFocus } from "./hooks/useRefreshOnFocus";
+import { ConflictBanner } from "./components/ConflictBanner";
 import { ImportRecipe } from "./components/ImportRecipe";
 import { RecipeList } from "./pages/RecipeList";
 import { RecipeDetail } from "./pages/RecipeDetail";
@@ -110,6 +111,8 @@ function App() {
         )}
       </aside>
       <main className="main">
+        {/* Surface sync-conflict duplicates regardless of the active view (#51). */}
+        <ConflictBanner reloadKey={listVersion} onResolved={refreshList} />
         {view === "settings" ? (
           <Settings />
         ) : view === "calendar" ? (

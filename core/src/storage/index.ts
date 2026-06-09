@@ -15,6 +15,12 @@ export {
 } from "./recipe-layout";
 export { recipeToMarkdown, recipeFromMarkdown } from "./recipe-serialization";
 export { RecipeRepository } from "./recipe-repository";
+export {
+  CONFLICT_SUFFIX_RE,
+  scanRecipeConflicts,
+  resolveRecipeConflict,
+} from "./conflicts";
+export type { ConflictFile, ConflictGroup, ConflictReason } from "./conflicts";
 
 export { monthFileToString, eventsFromMonthFile } from "./meal-serialization";
 export { MealEventRepository, MEAL_DIR } from "./meal-repository";

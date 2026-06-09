@@ -569,6 +569,69 @@ body {
 .draft-banner strong {
   color: var(--warn);
 }
+
+/* Sync-conflict banner (#51) — flags duplicate recipe files a sync tool left. */
+.conflicts {
+  margin: 18px 0 4px;
+  padding: 14px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--bad);
+  border-radius: 10px;
+}
+.conflicts__head strong {
+  color: var(--bad);
+}
+.conflicts__head p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+}
+.conflicts__list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.conflicts__group {
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.conflicts__title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.conflicts__copies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.conflicts__copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.conflicts__copy-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.conflicts__copy-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conflicts__copy-meta {
+  font-size: 12px;
+}
 .detail__source {
   color: var(--accent);
   font-size: 13px;

@@ -15,6 +15,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type FileSystem,
   MealEventRepository,
   RecipeRepository,
   ShoppingListRepository,
@@ -25,6 +26,8 @@ import { TauriFileSystem } from "./tauri-fs";
 export interface Repos {
   /** Absolute path of the active data dir (shown in settings/diagnostics). */
   dataDir: string;
+  /** The shared filesystem adapter, for storage helpers beyond the repos (#51). */
+  fs: FileSystem;
   recipes: RecipeRepository;
   meals: MealEventRepository;
   shopping: ShoppingListRepository;
@@ -40,6 +43,7 @@ async function build(): Promise<Repos> {
   await fs.mkdir(dataDir);
   return {
     dataDir,
+    fs,
     recipes: new RecipeRepository(fs, dataDir),
     meals: new MealEventRepository(fs, dataDir),
     shopping: new ShoppingListRepository(fs, dataDir),

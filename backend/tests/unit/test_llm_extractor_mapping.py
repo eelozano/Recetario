@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 import pytest
@@ -10,6 +11,7 @@ from recetario.application.dto import RecipeIngredientInput, RecipeInput
 from recetario.application.ports import ExtractError
 from recetario.domain.entities import RecipeStatus, SourceType
 from recetario.infrastructure.llm import apply_structured, parse_resolved
+from recetario.infrastructure.llm.recipe_extractor import AnthropicRecipeExtractor
 
 
 def _draft() -> RecipeInput:
@@ -104,3 +106,72 @@ def test_parse_resolved_drops_out_of_range_indices():
 def test_parse_resolved_raises_without_matches_array():
     with pytest.raises(ExtractError):
         parse_resolved({}, count=1)
+
+
+# --- Model split: structuring runs on Haiku, extraction stays on Sonnet -------
+
+
+class _Block:
+    type = "text"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class _Resp:
+    def __init__(self, text: str) -> None:
+        self.content = [_Block(text)]
+
+
+class _RecordingClient:
+    """Stands in for anthropic.Anthropic, recording each call's `model`."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self.models: list[str] = []
+
+    @property
+    def messages(self):  # noqa: ANN202 - the SDK exposes `.messages.create`
+        return self
+
+    def create(self, **kwargs):  # noqa: ANN003, ANN202
+        self.models.append(kwargs["model"])
+        return _Resp(self._text)
+
+
+_CANNED = json.dumps(
+    {
+        "title": "Garlic Soup",
+        "servings": 1,
+        "instructions_md": "Boil.",
+        "ingredients": [
+            {"name": "garlic", "quantity": 1, "unit": "clove", "raw_text": "1 clove garlic"}
+        ],
+    }
+)
+
+
+def _extractor_with_fake() -> AnthropicRecipeExtractor:
+    ext = AnthropicRecipeExtractor(
+        "test-key", model="extraction-model", structuring_model="structuring-model"
+    )
+    ext._client = _RecordingClient(_CANNED)  # bypass the lazy SDK import
+    return ext
+
+
+def test_structure_uses_the_structuring_model():
+    ext = _extractor_with_fake()
+    ext.structure(_draft())
+    assert ext._client.models == ["structuring-model"]
+
+
+def test_extraction_paths_use_the_extraction_model():
+    ext = _extractor_with_fake()
+    ext.extract_from_web("a page of text", source_url="https://example.com")
+    ext.extract_from_transcript("a transcript", source_url="https://example.com")
+    assert ext._client.models == ["extraction-model", "extraction-model"]
+
+
+def test_structuring_model_defaults_to_the_extraction_model():
+    ext = AnthropicRecipeExtractor("test-key", model="only-model")
+    assert ext._structuring_model == "only-model"

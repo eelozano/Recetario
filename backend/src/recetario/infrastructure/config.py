@@ -29,9 +29,13 @@ class Settings(BaseSettings):
     # Anthropic API key. When set, import runs an extra LLM pass to structure
     # ingredient lines and to handle pages/videos the deterministic scraper can't.
     anthropic_api_key: str | None = None
-    # Sonnet is the right tier: bounded extraction + tool-use, far cheaper/faster
-    # than Opus with no meaningful quality loss. Override per-env.
+    # The *extraction* model: recovering a recipe from messy page text or a video
+    # transcript is real reasoning, so it stays on Sonnet. Override per-env.
     anthropic_model: str = "claude-sonnet-4-6"
+    # The *structuring* model: splitting already-scraped ingredient lines into
+    # quantity/unit/name is mechanical, so it runs on Haiku — much faster and
+    # cheaper, with no quality loss for this bounded task. Override per-env.
+    anthropic_structuring_model: str = "claude-haiku-4-5-20251001"
 
 
 def get_settings() -> Settings:

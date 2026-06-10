@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 import { useRefreshOnFocus } from "./hooks/useRefreshOnFocus";
+import { warmUpImporter } from "./data/import";
 import { ConflictBanner } from "./components/ConflictBanner";
 import { ImportRecipe } from "./components/ImportRecipe";
 import { RecipeList } from "./pages/RecipeList";
@@ -29,6 +30,13 @@ function App() {
   // an open recipe's detail intentionally keeps its in-progress edits and only
   // re-reads when reselected.
   useRefreshOnFocus(refreshList);
+
+  // Eagerly spawn the import helper at startup (#45): the first spawn pays a
+  // one-time ~9s PyInstaller extraction, so paying it now — invisibly, while the
+  // app opens — keeps it off the user's first import.
+  useEffect(() => {
+    void warmUpImporter();
+  }, []);
 
   return (
     <div className="app">

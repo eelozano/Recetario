@@ -514,23 +514,6 @@ body {
   font-size: 13px;
   margin: 0;
 }
-.import__browser-link {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-}
-.import__browser-link:hover:not(:disabled) {
-  text-decoration: underline;
-}
-.import__browser-link:disabled {
-  color: var(--muted);
-  cursor: default;
-}
 .import__hint {
   font-size: 12px;
   margin: 0;

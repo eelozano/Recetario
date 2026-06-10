@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { importFromHtml, importFromUrl, importFromVideo } from "../data/import";
+import { importFromHtml, importFromVideo } from "../data/import";
 
 interface Props {
   /** Called with the new recipe's id once an import finishes. */
@@ -27,15 +27,18 @@ interface CaptureEvent {
 }
 
 /**
- * Import-from-URL box. A web/video URL goes straight to the `recetario-helper`
- * sidecar (recipe-scrapers / yt-dlp / Claude). For pages a server-side fetch
- * can't reach (Cloudflare etc.), "Open in browser" launches an in-app window;
- * once the user clicks the injected capture button, the rendered HTML comes back
- * via a `recipe-html-captured` event and is imported the same way.
+ * Import box (browser-first). A web URL opens in an in-app browser window: the
+ * page renders as a real browser — clearing paywalls/Cloudflare with the user's
+ * own session — and the injected "Import this recipe" button hands the rendered
+ * HTML back via a `recipe-html-captured` event, which we import through the
+ * `recetario-helper` sidecar (recipe-scrapers + a Haiku pass to structure the
+ * ingredients). Video links can't be captured from a DOM, so they still go
+ * straight to the sidecar's caption/transcript path.
  */
 export function ImportRecipe({ onImported }: Props) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const [opened, setOpened] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Guard against overlapping imports (e.g. a capture firing mid-import).
   const inFlight = useRef(false);
@@ -44,6 +47,7 @@ export function ImportRecipe({ onImported }: Props) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
+    setOpened(false);
     setError(null);
     try {
       const id = await task();
@@ -77,21 +81,27 @@ export function ImportRecipe({ onImported }: Props) {
     e.preventDefault();
     const trimmed = url.trim();
     if (!trimmed || busy) return;
-    void run(() =>
-      isVideoUrl(trimmed) ? importFromVideo(trimmed) : importFromUrl(trimmed),
-    );
+    // Video → caption path (no DOM to capture). Web → open in the browser.
+    if (isVideoUrl(trimmed)) {
+      void run(() => importFromVideo(trimmed));
+    } else {
+      void openInBrowser(trimmed);
+    }
   }
 
-  async function openInBrowser() {
-    const trimmed = url.trim();
+  async function openInBrowser(rawUrl: string) {
+    const trimmed = rawUrl.trim();
     if (!trimmed || busy) return;
     setError(null);
     try {
       await invoke("open_recipe_capture", { url: trimmed });
+      setOpened(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not open the page.");
     }
   }
+
+  const isVideo = url.trim() !== "" && isVideoUrl(url);
 
   return (
     <form className="import" onSubmit={submit}>
@@ -109,23 +119,23 @@ export function ImportRecipe({ onImported }: Props) {
           disabled={busy}
         />
         <button type="submit" className="btn btn--accent" disabled={busy || !url.trim()}>
-          {busy ? "Importing…" : "Import"}
+          {busy ? "Importing…" : isVideo ? "Import" : "Open in browser"}
         </button>
       </div>
-      <button
-        type="button"
-        className="import__browser-link"
-        onClick={openInBrowser}
-        disabled={busy || !url.trim()}
-        title="Open the page in an in-app browser, then click “Import this recipe”"
-      >
-        Page won't import? Open in browser →
-      </button>
-      {busy && (
+      {busy ? (
         <p className="muted import__hint">
-          Reading the recipe… this can take a few seconds for messy pages or videos.
+          Reading the recipe… this can take a few seconds.
         </p>
-      )}
+      ) : opened ? (
+        <p className="muted import__hint">
+          Opened in a browser window — load the page, then click “Import this recipe” on it.
+        </p>
+      ) : !isVideo ? (
+        <p className="muted import__hint">
+          Opens the page in an in-app browser so paywalled and protected sites load
+          with your own session; click “Import this recipe” to save it.
+        </p>
+      ) : null}
       {error && <p className="error import__error">{error}</p>}
     </form>
   );

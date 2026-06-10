@@ -216,9 +216,18 @@ async function saveDraft(payload: DraftPayload | null): Promise<string> {
   return saved.id!;
 }
 
-/** Import a recipe from a web page URL. Resolves to the new recipe's id. */
-export async function importFromUrl(url: string): Promise<string> {
-  return saveDraft(await helper.request("from-url", { url }));
+/**
+ * Warm the import helper at app startup. The first spawn pays a one-time ~9s
+ * PyInstaller extraction; doing it eagerly (rather than lazily on the first
+ * import) keeps that cost off the first import — the way the old always-on
+ * backend did. Best-effort: if it fails, the first import just spawns as usual.
+ */
+export async function warmUpImporter(): Promise<void> {
+  try {
+    await helper.request("ping", {});
+  } catch {
+    /* best-effort: the next import will spawn/retry on its own */
+  }
 }
 
 /** Import a recipe from a video URL (captions). Resolves to the new recipe's id. */

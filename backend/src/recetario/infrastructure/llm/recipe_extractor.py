@@ -367,13 +367,18 @@ class AnthropicRecipeExtractor:
         api_key: str,
         *,
         model: str = _DEFAULT_MODEL,
+        structuring_model: str | None = None,
         max_tokens: int = 8000,
         max_tool_iterations: int = 8,
     ) -> None:
         if not api_key:
             raise ValueError("An Anthropic API key is required (set RECETARIO_ANTHROPIC_API_KEY).")
         self._api_key = api_key
+        # `model` handles real reasoning (messy-page / transcript extraction).
+        # `structuring_model` handles the mechanical ingredient-line split; it
+        # falls back to `model` so callers that don't care keep one model.
         self._model = model
+        self._structuring_model = structuring_model or model
         self._max_tokens = max_tokens
         self._max_tool_iterations = max_tool_iterations
         self._client: Any = None
@@ -395,7 +400,7 @@ class AnthropicRecipeExtractor:
         client = self._get_client()
         try:
             resp = client.messages.create(
-                model=self._model,
+                model=self._structuring_model,
                 max_tokens=self._max_tokens,
                 system=_STRUCTURE_SYSTEM,
                 output_config={"format": _STRUCTURE_FORMAT},

@@ -75,7 +75,9 @@ def _extractor_or_none() -> AnthropicRecipeExtractor | None:
     if not settings.anthropic_api_key:
         return None
     return AnthropicRecipeExtractor(
-        settings.anthropic_api_key, model=settings.anthropic_model
+        settings.anthropic_api_key,
+        model=settings.anthropic_model,
+        structuring_model=settings.anthropic_structuring_model,
     )
 
 

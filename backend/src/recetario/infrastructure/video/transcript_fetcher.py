@@ -28,6 +28,12 @@ _FORMAT_PRIORITY = ("json3", "srv3", "vtt")
 
 _VTT_TAG_RE = re.compile(r"<[^>]+>")  # inline timing/style tags: <00:00:01.000>, <c>
 
+# A recipe video's transcript runs a few tens of KB. Anything far past this is a
+# malformed or non-caption payload; cap it so one bad fetch can't balloon the LLM
+# bill (200k chars ≈ 50k tokens ≈ a few cents, vs. a 636k-token / ~$1.91 blowout
+# when a watch-page HTML body was once flattened as if it were captions).
+_MAX_TRANSCRIPT_CHARS = 200_000
+
 
 @dataclass(frozen=True)
 class SubtitleTrack:
@@ -99,6 +105,14 @@ def _collapse(lines: list[str]) -> str:
 
 def parse_vtt(content: str) -> str:
     """Flatten a WebVTT track to plain text (drop headers, timestamps, tags)."""
+    content = content.lstrip("﻿")  # drop a leading UTF-8 BOM if present
+    # A real WebVTT file must begin with the "WEBVTT" signature. Reject anything
+    # else: an expired/403'd caption URL can return an HTML error or player page,
+    # and blindly flattening that as "captions" ships megabytes of markup to the LLM.
+    if not content.lstrip().upper().startswith("WEBVTT"):
+        raise TranscriptError(
+            "Caption track was not valid WebVTT (the URL returned non-caption content)."
+        )
     lines: list[str] = []
     for raw in content.splitlines():
         line = raw.strip()
@@ -130,10 +144,14 @@ def parse_json3(content: str) -> str:
 
 
 def caption_to_text(content: str, ext: str) -> str:
-    """Dispatch caption parsing by container format."""
-    if ext in ("json3", "srv3"):
-        return parse_json3(content)
-    return parse_vtt(content)
+    """Dispatch caption parsing by container format, capping pathological sizes."""
+    text = parse_json3(content) if ext in ("json3", "srv3") else parse_vtt(content)
+    # Backstop the cost: even a well-formed but extreme transcript is truncated so
+    # it can never run up an outsized LLM bill. Validation above already rejects
+    # non-caption payloads; this guards the rare genuinely-huge caption track.
+    if len(text) > _MAX_TRANSCRIPT_CHARS:
+        text = text[:_MAX_TRANSCRIPT_CHARS]
+    return text
 
 
 # Browser-like header so subtitle CDNs don't 403 the default agent.
@@ -192,6 +210,13 @@ class YtDlpTranscriptFetcher:
             resp.raise_for_status()
         except Exception as exc:  # noqa: BLE001
             raise TranscriptError(f"Could not download captions for {url}: {exc}") from exc
+
+        # A caption CDN that's expired or rate-limited can answer 200 with an HTML
+        # page instead of the track; reject it before it reaches the parser.
+        if "html" in resp.headers.get("content-type", "").lower():
+            raise TranscriptError(
+                f"Caption URL for {url} returned a web page, not a caption track."
+            )
 
         transcript = caption_to_text(resp.text, track.ext)
         if not transcript.strip():

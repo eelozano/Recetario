@@ -94,3 +94,29 @@ def test_pick_track_falls_back_to_automatic_when_no_manual():
 def test_pick_track_returns_none_without_captions():
     assert pick_subtitle_track(None, None) is None
     assert pick_subtitle_track({}, {}) is None
+
+
+def test_parse_vtt_rejects_non_caption_page_html():
+    # An expired/403'd caption URL can answer 200 with the watch-page HTML/JS;
+    # flattening that as "captions" once shipped 636k tokens (~$1.91) to the LLM.
+    page = (
+        'window.WIZ_global_data = {"AfY8Hf":false};\n'
+        "window.ytcfg.set('EMERGENCY_BASE_URL', '/error_204');\n"
+        "window.onerror=function(msg,url,line){};"
+    )
+    with pytest.raises(TranscriptError):
+        parse_vtt(page)
+
+
+def test_parse_vtt_accepts_bom_prefixed_signature():
+    text = parse_vtt("﻿WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello there.\n")
+    assert text == "Hello there."
+
+
+def test_caption_to_text_caps_oversized_transcript():
+    from recetario.infrastructure.video.transcript_fetcher import _MAX_TRANSCRIPT_CHARS
+
+    huge = "word " * 60_000  # ~300k chars of valid caption text, over the cap
+    vtt = f"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n{huge}\n"
+    text = caption_to_text(vtt, "vtt")
+    assert len(text) == _MAX_TRANSCRIPT_CHARS

@@ -29,6 +29,15 @@ class TranscriptError(ScrapeError):
     """
 
 
+class TranscriptRateLimitedError(TranscriptError):
+    """Raised when the caption host throttles us (HTTP 429).
+
+    Distinct from a plain `TranscriptError` so the fetcher can stop trying
+    sibling tracks immediately: a 429 is endpoint-wide (every track for the
+    video hits the same host), so retrying more URLs only deepens the throttle.
+    """
+
+
 class ExtractError(Exception):
     """Raised when the LLM extractor cannot structure or resolve a draft.
 

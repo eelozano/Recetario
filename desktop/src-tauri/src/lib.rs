@@ -23,46 +23,122 @@ const CAPTURE_LABEL: &str = "recipe-capture";
 
 /// Read-only capture script injected into the import browser.
 ///
-/// It adds a single floating "Import this recipe" button. On click it reads the
-/// fully rendered `outerHTML` (the real browser has by then run any Cloudflare
-/// JS challenge) and emits it back to the app as a `recipe-html-captured` event,
-/// which the main window turns into a from-html import job. The only thing it
-/// writes to the page is its own button — it never touches the page's data,
-/// forms, or credentials. Capabilities limit this webview to emitting events and
-/// nothing else (no fs/shell/window access).
+/// It adds a floating toolbar (#61): back / forward / reload, an address bar,
+/// and the "Import this recipe" button. Clicking Import reads the fully
+/// rendered `outerHTML` (the real browser has by then run any Cloudflare JS
+/// challenge) and emits it back to the app as a `recipe-html-captured` event,
+/// which the main window turns into a from-html import job. The captured URL is
+/// `location.href` at click time, so it always matches the page being imported.
+///
+/// Navigation is plain in-page JS (`history.back()`, `location.href = …`) — no
+/// new IPC surface. The only thing the script writes to the page is its own
+/// toolbar — it never touches the page's data, forms, or credentials; the one
+/// IPC the page webview can perform remains the single capture event emit.
+/// Because init scripts re-run on every page load, the toolbar persists across
+/// navigations. `target="_blank"` links and `window.open` are routed into this
+/// window (WKWebView would otherwise drop them), so search→result flows work.
 const CAPTURE_JS: &str = r#"
 ;(function () {
   if (window.top !== window.self) return; // main frame only
-  var BTN_ID = 'recetario-capture-btn';
+  var BAR_ID = 'recetario-capture-bar';
+  var urlInput = null;
+
   function capture() {
     try {
       window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
         event: 'recipe-html-captured',
         payload: { url: window.location.href, html: document.documentElement.outerHTML }
       });
-      var b = document.getElementById(BTN_ID);
+      var b = document.getElementById(BAR_ID + '-import');
       if (b) { b.textContent = 'Imported ✓'; b.disabled = true; }
     } catch (e) { /* swallow: nothing we can surface from here */ }
   }
+
+  function go(raw) {
+    var u = (raw || '').trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    try { window.location.href = u; } catch (e) { /* invalid URL — stay put */ }
+  }
+
+  function navButton(label, title, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.title = title;
+    b.style.cssText =
+      'width:30px;height:30px;flex:none;background:#3a3a3a;color:#eee;border:none;' +
+      'border-radius:8px;font:600 15px system-ui,-apple-system,sans-serif;' +
+      'cursor:pointer;line-height:1;';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
   function inject() {
-    if (!document.body || document.getElementById(BTN_ID)) return;
+    if (!document.body || document.getElementById(BAR_ID)) return;
+    var bar = document.createElement('div');
+    bar.id = BAR_ID;
+    bar.style.cssText =
+      'position:fixed;left:50%;transform:translateX(-50%);bottom:16px;' +
+      'z-index:2147483647;display:flex;gap:6px;align-items:center;' +
+      'background:#222;padding:8px;border-radius:12px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.45);max-width:min(720px,calc(100vw - 32px));';
+
+    bar.appendChild(navButton('‹', 'Back', function () { history.back(); }));
+    bar.appendChild(navButton('›', 'Forward', function () { history.forward(); }));
+    bar.appendChild(navButton('⟳', 'Reload', function () { location.reload(); }));
+
+    urlInput = document.createElement('input');
+    urlInput.type = 'text';
+    urlInput.value = window.location.href;
+    urlInput.spellcheck = false;
+    urlInput.style.cssText =
+      'flex:1;min-width:200px;width:340px;background:#2e2e2e;color:#eee;' +
+      'border:1px solid #4a4a4a;border-radius:8px;padding:6px 10px;' +
+      'font:13px system-ui,-apple-system,sans-serif;outline:none;';
+    // Keep page-level hotkey handlers from hijacking typing in the address bar.
+    urlInput.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter') go(urlInput.value);
+    });
+    urlInput.addEventListener('focus', function () { urlInput.select(); });
+    bar.appendChild(urlInput);
+
     var btn = document.createElement('button');
-    btn.id = BTN_ID;
+    btn.id = BAR_ID + '-import';
     btn.type = 'button';
     btn.textContent = 'Import this recipe';
     btn.style.cssText =
-      'position:fixed;right:16px;bottom:16px;z-index:2147483647;' +
-      'background:#b4532a;color:#fff;border:none;border-radius:10px;' +
-      'padding:12px 18px;font:600 14px system-ui,-apple-system,sans-serif;' +
-      'box-shadow:0 4px 16px rgba(0,0,0,.35);cursor:pointer;';
+      'flex:none;background:#b4532a;color:#fff;border:none;border-radius:8px;' +
+      'padding:8px 14px;font:600 13px system-ui,-apple-system,sans-serif;' +
+      'cursor:pointer;';
     btn.addEventListener('click', capture);
-    document.body.appendChild(btn);
+    bar.appendChild(btn);
+
+    document.body.appendChild(bar);
   }
+
+  // New-tab targets would otherwise go nowhere in this WebView; keep the user's
+  // click-through flows (search results, recipe indexes) inside this window so
+  // back/forward still apply.
+  window.open = function (u) { if (u) go(String(u)); return null; };
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var a = t && t.closest ? t.closest('a[target="_blank"]') : null;
+    if (a && a.href) { e.preventDefault(); window.location.href = a.href; }
+  }, true);
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', inject);
   } else {
     inject();
   }
+  // SPAs rewrite the URL without a page load and sometimes rebuild <body>;
+  // keep the address bar honest and the toolbar present.
+  setInterval(function () {
+    if (!document.getElementById(BAR_ID)) { urlInput = null; inject(); return; }
+    if (urlInput && document.activeElement !== urlInput) urlInput.value = window.location.href;
+  }, 1000);
 })();
 "#;
 
@@ -77,7 +153,7 @@ fn open_recipe_capture(app: tauri::AppHandle, url: String) -> Result<(), String>
         let _ = existing.close();
     }
     WebviewWindowBuilder::new(&app, CAPTURE_LABEL, WebviewUrl::External(parsed))
-        .title("Import a recipe — load the page, then click “Import this recipe”")
+        .title("Import a recipe — browse to the page, then click “Import this recipe”")
         .inner_size(1024.0, 800.0)
         .initialization_script(CAPTURE_JS)
         .build()

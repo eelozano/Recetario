@@ -128,12 +128,14 @@ export function ImportRecipe({ onImported }: Props) {
         </p>
       ) : opened ? (
         <p className="muted import__hint">
-          Opened in a browser window — load the page, then click “Import this recipe” on it.
+          Opened in a browser window — browse to the recipe (the address bar and
+          back/forward work), then click “Import this recipe” on it.
         </p>
       ) : !isVideo ? (
         <p className="muted import__hint">
           Opens the page in an in-app browser so paywalled and protected sites load
-          with your own session; click “Import this recipe” to save it.
+          with your own session; browse or log in if needed, then click “Import this
+          recipe” to save it.
         </p>
       ) : null}
       {error && <p className="error import__error">{error}</p>}

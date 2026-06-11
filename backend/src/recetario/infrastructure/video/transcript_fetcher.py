@@ -7,24 +7,33 @@ raise `TranscriptError` — audio transcription is a deferred fallback.
 
 The yt-dlp metadata call and the subtitle HTTP fetch are the only network steps;
 all selection and caption-format parsing live in module-level pure functions
-(`pick_subtitle_track`, `parse_vtt`, `parse_json3`, `caption_to_text`) so they are
-unit-tested against fixtures with no network.
+(`rank_subtitle_tracks`, `parse_vtt`, `parse_json3`, `parse_srv1`,
+`caption_to_text`) so they are unit-tested against fixtures with no network.
 """
 
 from __future__ import annotations
 
+import html
 import json
 import re
 from dataclasses import dataclass
 from typing import Any
+from xml.etree import ElementTree
 
-from recetario.application.ports import TranscriptError
+from recetario.application.ports import TranscriptError, TranscriptRateLimitedError
 
 # Manual captions are human-written and far cleaner than auto-generated ones, so
 # they win; English variants are preferred but we fall back to whatever exists.
 _PREFERRED_LANGS = ("en", "en-us", "en-gb", "en-orig")
-# Caption container formats we can parse, best first.
-_FORMAT_PRIORITY = ("json3", "srv3", "vtt")
+# Caption container formats we have a parser for, best first. Selection is
+# restricted to this set: yt-dlp also lists pseudo-subtitles like `live_chat`
+# (ext "json", URL = the watch page itself) and formats we can't parse
+# (ttml/srt); picking live_chat once flattened 1.4MB of page HTML into a
+# $1.91 LLM call (#62/#64).
+_FORMAT_PRIORITY = ("json3", "srv1", "srv3", "vtt")
+# How many candidate tracks to try before giving up: enough to route around a
+# few bad URLs without hammering the caption CDN across 150+ auto languages.
+_MAX_TRACK_ATTEMPTS = 4
 
 _VTT_TAG_RE = re.compile(r"<[^>]+>")  # inline timing/style tags: <00:00:01.000>, <c>
 
@@ -56,20 +65,22 @@ def _format_rank(ext: str) -> int:
         return len(_FORMAT_PRIORITY)
 
 
-def pick_subtitle_track(
+def rank_subtitle_tracks(
     subtitles: dict[str, Any] | None,
     automatic: dict[str, Any] | None,
-) -> SubtitleTrack | None:
-    """Choose the best caption track from a yt-dlp info dict.
+) -> list[SubtitleTrack]:
+    """Rank every usable caption track from a yt-dlp info dict, best first.
 
-    Prefers manual subtitles over auto-generated, English over other languages,
-    and a parseable container format. Returns the chosen track or ``None`` when
-    no usable track exists.
+    Only tracks in a parseable container format are candidates — this is what
+    drops `live_chat` and other pseudo-subtitles. Manual subtitles outrank
+    auto-generated, English outranks other languages, and cleaner machine
+    formats outrank cue-text ones. Returning the whole ranking (rather than a
+    single winner) lets the fetcher fall through to the next candidate when a
+    track's URL fails validation, so one bad URL doesn't doom the import.
     """
-    # Manual first: if any manual track exists we never fall through to auto.
-    for source in (subtitles or {}, automatic or {}):
-        best_key: tuple[int, int, str] | None = None
-        best_track: SubtitleTrack | None = None
+    ranked: list[tuple[tuple[int, int, int, str], SubtitleTrack]] = []
+    seen: set[str] = set()
+    for source_rank, source in enumerate((subtitles or {}, automatic or {})):
         for lang, formats in source.items():
             if not isinstance(formats, list):
                 continue
@@ -78,15 +89,22 @@ def pick_subtitle_track(
                     continue
                 url = fmt.get("url")
                 ext = fmt.get("ext", "")
-                if not url:
+                if not url or ext not in _FORMAT_PRIORITY or url in seen:
                     continue
-                key = (_lang_rank(lang), _format_rank(ext), lang)
-                if best_key is None or key < best_key:
-                    best_key = key
-                    best_track = SubtitleTrack(url=url, ext=ext)
-        if best_track is not None:
-            return best_track
-    return None
+                seen.add(url)
+                key = (source_rank, _lang_rank(lang), _format_rank(ext), lang)
+                ranked.append((key, SubtitleTrack(url=url, ext=ext)))
+    ranked.sort(key=lambda item: item[0])
+    return [track for _, track in ranked]
+
+
+def pick_subtitle_track(
+    subtitles: dict[str, Any] | None,
+    automatic: dict[str, Any] | None,
+) -> SubtitleTrack | None:
+    """The single best caption track, or ``None`` when no usable track exists."""
+    tracks = rank_subtitle_tracks(subtitles, automatic)
+    return tracks[0] if tracks else None
 
 
 def _collapse(lines: list[str]) -> str:
@@ -143,9 +161,33 @@ def parse_json3(content: str) -> str:
     return _collapse(lines)
 
 
+def parse_srv1(content: str) -> str:
+    """Flatten a YouTube srv1 caption payload to plain text.
+
+    srv1 is a minimal XML format: ``<transcript><text start dur>…</text>…``.
+    YouTube double-escapes entities in it (``&amp;#39;``), so the text needs one
+    more unescape pass after XML parsing.
+    """
+    try:
+        root = ElementTree.fromstring(content)
+    except ElementTree.ParseError as exc:
+        raise TranscriptError(f"Could not parse srv1 captions: {exc}") from exc
+    lines: list[str] = []
+    for node in root.iter("text"):
+        text = html.unescape("".join(node.itertext()))
+        if text.strip():
+            lines.append(text.replace("\n", " "))
+    return _collapse(lines)
+
+
 def caption_to_text(content: str, ext: str) -> str:
     """Dispatch caption parsing by container format, capping pathological sizes."""
-    text = parse_json3(content) if ext in ("json3", "srv3") else parse_vtt(content)
+    if ext in ("json3", "srv3"):
+        text = parse_json3(content)
+    elif ext == "srv1":
+        text = parse_srv1(content)
+    else:
+        text = parse_vtt(content)
     # Backstop the cost: even a well-formed but extreme transcript is truncated so
     # it can never run up an outsized LLM bill. Validation above already rejects
     # non-caption payloads; this guards the rare genuinely-huge caption track.
@@ -191,34 +233,65 @@ class YtDlpTranscriptFetcher:
         except Exception as exc:  # noqa: BLE001 - yt-dlp raises many error types
             raise TranscriptError(f"Could not read video {url}: {exc}") from exc
 
-        track = pick_subtitle_track(
+        tracks = rank_subtitle_tracks(
             info.get("subtitles"), info.get("automatic_captions")
         )
-        if track is None:
+        if not tracks:
             raise TranscriptError(
                 "This video has no captions to import from. "
                 "(Audio transcription is not supported yet.)"
             )
 
+        # Try candidates best-first: a single track whose URL has expired or
+        # answers with an HTML page shouldn't doom the import when the same
+        # captions exist in another format or language.
+        last_error: TranscriptError | None = None
+        for track in tracks[:_MAX_TRACK_ATTEMPTS]:
+            try:
+                transcript = caption_to_text(self._download(track.url), track.ext)
+                if not transcript.strip():
+                    raise TranscriptError("The video's captions were empty after parsing.")
+                return transcript
+            except TranscriptRateLimitedError:
+                # A 429 is endpoint-wide: every sibling track hits the same host,
+                # so trying more only deepens YouTube's throttle. Stop now and
+                # surface a wait-and-retry message instead of hammering.
+                raise
+            except TranscriptError as exc:
+                last_error = exc
+        raise TranscriptError(f"Could not download captions for {url}: {last_error}")
+
+    def _download(self, track_url: str) -> str:
+        """Fetch one caption track, raising ``TranscriptError`` on anything unusable."""
+        import httpx
+
         try:
             resp = httpx.get(
-                track.url,
+                track_url,
                 follow_redirects=True,
                 timeout=self._timeout,
                 headers={"User-Agent": _BROWSER_UA},
             )
+            # YouTube throttles the timedtext endpoint per-IP/video, and it trips
+            # easily on repeated imports of the same video. Translate it into a
+            # clear, actionable message — and a distinct type so the caller stops
+            # retrying sibling tracks (which only deepens the throttle).
+            if resp.status_code == 429:
+                raise TranscriptRateLimitedError(
+                    "YouTube is rate-limiting caption downloads for this video "
+                    "right now (HTTP 429). This is temporary — wait a few minutes "
+                    "before trying again (repeated retries make it last longer)."
+                )
             resp.raise_for_status()
+        except TranscriptError:
+            raise
         except Exception as exc:  # noqa: BLE001
-            raise TranscriptError(f"Could not download captions for {url}: {exc}") from exc
+            raise TranscriptError(f"Could not download captions: {exc}") from exc
 
         # A caption CDN that's expired or rate-limited can answer 200 with an HTML
         # page instead of the track; reject it before it reaches the parser.
         if "html" in resp.headers.get("content-type", "").lower():
             raise TranscriptError(
-                f"Caption URL for {url} returned a web page, not a caption track."
+                "Caption URL returned a web page, not a caption track."
             )
-
-        transcript = caption_to_text(resp.text, track.ext)
-        if not transcript.strip():
-            raise TranscriptError("The video's captions were empty after parsing.")
-        return transcript
+        return resp.text

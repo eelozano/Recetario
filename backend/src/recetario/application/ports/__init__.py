@@ -5,6 +5,7 @@ from recetario.application.ports.ingestion import (
     RecipeScraper,
     ScrapeError,
     TranscriptError,
+    TranscriptRateLimitedError,
     VideoTranscriptFetcher,
 )
 from recetario.application.ports.nutrition import NutritionProvider, NutritionRepository
@@ -18,5 +19,6 @@ __all__ = [
     "RecipeScraper",
     "ScrapeError",
     "TranscriptError",
+    "TranscriptRateLimitedError",
     "VideoTranscriptFetcher",
 ]

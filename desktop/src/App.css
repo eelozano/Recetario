@@ -966,9 +966,13 @@ code {
   max-width: 60ch;
 }
 .shop-item {
+  display: flex;
+  align-items: center;
   border-bottom: 1px solid var(--border);
 }
 .shop-item__label {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -985,6 +989,39 @@ code {
 .shop-item.is-checked .shop-item__label span {
   color: var(--muted);
   text-decoration: line-through;
+}
+.shop-item__remove {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 6px;
+}
+.shop-item__remove:hover {
+  color: var(--bad);
+}
+
+.shop-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  max-width: 60ch;
+}
+.shop-add input {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.shop-add input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* ---- Settings (bring-your-own keys) ---- */

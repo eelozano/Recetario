@@ -35,12 +35,26 @@ from recetario.domain.entities import RecipeStatus, SourceType
 
 _DEFAULT_MODEL = "claude-sonnet-4-6"
 
+# Grocery-aisle categories. Must stay in sync with the TS core's canonical set
+# (core/src/services/ingredient-categories.ts), which validates these on read.
+_CATEGORIES = ("produce", "meat", "dairy", "pantry", "frozen", "other")
+
+_CATEGORY_INSTRUCTION = (
+    "Also classify each ingredient into the grocery-store section where you "
+    "would buy it: 'produce' (fresh fruit/vegetables/herbs), 'meat' (meat, "
+    "poultry, seafood, deli), 'dairy' (milk, cheese, eggs, butter, yogurt), "
+    "'pantry' (dry goods, canned, baking, spices, oils, condiments), 'frozen', "
+    "or 'other'. Classify the form actually called for (canned tomatoes are "
+    "pantry, fresh tomatoes are produce); use null only if no section fits."
+)
+
 _STRUCTURE_SYSTEM = (
     "You normalize scraped recipe drafts. For each ingredient line, extract a "
     "numeric quantity, a unit, and the bare ingredient name (drop quantities and "
     "units from the name). Keep the original line verbatim as raw_text. Use null "
     "for a quantity or unit that is absent or non-numeric (e.g. 'to taste'). Do "
-    "not invent ingredients, steps, or servings — only restructure what is given."
+    "not invent ingredients, steps, or servings — only restructure what is given. "
+    + _CATEGORY_INSTRUCTION
 )
 
 _EXTRACT_SYSTEM = (
@@ -53,7 +67,7 @@ _EXTRACT_SYSTEM = (
     "the ingredient (or the name if there is no distinct phrase). Only include "
     "ingredients and steps actually described in the transcript — never invent "
     "amounts or steps. If the transcript is not a recipe, return an empty "
-    "ingredients array."
+    "ingredients array. " + _CATEGORY_INSTRUCTION
 )
 
 _WEB_EXTRACT_SYSTEM = (
@@ -67,7 +81,7 @@ _WEB_EXTRACT_SYSTEM = (
     "raw_text to the ingredient line as written on the page (or the name if there "
     "is no distinct line). Only include ingredients and steps actually present on "
     "the page — never invent amounts or steps. If the page has no recipe, return "
-    "an empty ingredients array."
+    "an empty ingredients array. " + _CATEGORY_INSTRUCTION
 )
 
 _RESOLUTION_SYSTEM = (
@@ -82,6 +96,19 @@ _RESOLUTION_SYSTEM = (
     "When unsure, return fdc_id null rather than guessing."
 )
 
+_INGREDIENT_ITEM_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "quantity": {"type": ["number", "null"]},
+        "unit": {"type": ["string", "null"]},
+        "raw_text": {"type": "string"},
+        "category": {"enum": [*_CATEGORIES, None]},
+    },
+    "required": ["name", "quantity", "unit", "raw_text", "category"],
+    "additionalProperties": False,
+}
+
 _STRUCTURE_FORMAT: dict[str, Any] = {
     "type": "json_schema",
     "schema": {
@@ -89,20 +116,7 @@ _STRUCTURE_FORMAT: dict[str, Any] = {
         "properties": {
             "title": {"type": "string"},
             "servings": {"type": ["integer", "null"]},
-            "ingredients": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "quantity": {"type": ["number", "null"]},
-                        "unit": {"type": ["string", "null"]},
-                        "raw_text": {"type": "string"},
-                    },
-                    "required": ["name", "quantity", "unit", "raw_text"],
-                    "additionalProperties": False,
-                },
-            },
+            "ingredients": {"type": "array", "items": _INGREDIENT_ITEM_SCHEMA},
         },
         "required": ["title", "servings", "ingredients"],
         "additionalProperties": False,
@@ -116,20 +130,7 @@ _EXTRACT_FORMAT: dict[str, Any] = {
         "properties": {
             "title": {"type": "string"},
             "servings": {"type": ["integer", "null"]},
-            "ingredients": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "quantity": {"type": ["number", "null"]},
-                        "unit": {"type": ["string", "null"]},
-                        "raw_text": {"type": "string"},
-                    },
-                    "required": ["name", "quantity", "unit", "raw_text"],
-                    "additionalProperties": False,
-                },
-            },
+            "ingredients": {"type": "array", "items": _INGREDIENT_ITEM_SCHEMA},
             "steps": {"type": "array", "items": {"type": "string"}},
         },
         "required": ["title", "servings", "ingredients", "steps"],
@@ -187,6 +188,11 @@ def _to_decimal(value: Any) -> Decimal | None:
         return None
 
 
+def _category_of(value: Any) -> str | None:
+    """Validate an LLM-emitted category against the canonical set."""
+    return value if value in _CATEGORIES else None
+
+
 def _ingredients_from_items(items: Any) -> list[RecipeIngredientInput]:
     """Map an LLM ingredients array into DTOs, dropping unnamed rows."""
     if not isinstance(items, list):
@@ -197,6 +203,7 @@ def _ingredients_from_items(items: Any) -> list[RecipeIngredientInput]:
             quantity=_to_decimal(item.get("quantity")),
             unit=(str(item["unit"]).strip() or None) if item.get("unit") else None,
             raw_text=(str(item.get("raw_text", "")).strip() or None),
+            category=_category_of(item.get("category")),
         )
         for item in items
         if isinstance(item, dict) and str(item.get("name", "")).strip()

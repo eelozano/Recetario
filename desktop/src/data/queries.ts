@@ -15,6 +15,8 @@ import {
   MacroProfile,
   MealPlanAggregator,
   ShoppingAggregator,
+  asShoppingCategory,
+  categorizeIngredient,
   manualPerServing,
   type MealEvent,
   type NutrientIndex,
@@ -93,8 +95,9 @@ export async function generateShoppingList(
   weekStart: string,
   weekEnd: string,
 ): Promise<ShoppingList> {
-  const { meals, recipes, shopping } = await getRepos();
+  const { meals, recipes, shopping, categoryOverrides } = await getRepos();
   const events = await meals.listRange(weekStart, weekEnd);
+  const overrides = await categoryOverrides.load();
 
   const cache = new Map<string, Recipe | null>();
   const demands: ShoppingDemand[] = [];
@@ -108,11 +111,18 @@ export async function generateShoppingList(
     const servings = recipe.servings && recipe.servings > 0 ? recipe.servings : 1;
     const factor = (event.servingsPlanned ?? ONE).div(servings);
     for (const line of recipe.ingredients ?? []) {
+      const normalizedName = line.ingredient.normalizedName;
       demands.push({
         ingredientName: line.ingredient.name,
-        normalizedName: line.ingredient.normalizedName,
+        normalizedName,
         quantity: line.quantity != null ? line.quantity.times(factor) : null,
         unit: line.unit ?? null,
+        // The user's saved preference outranks the import-time (LLM) category,
+        // which outranks the static map.
+        category:
+          overrides.get(normalizedName) ??
+          asShoppingCategory(line.category) ??
+          categorizeIngredient(normalizedName),
         ingredientId: line.ingredient.id ?? null,
         sourceEventId: event.id ?? null,
       });
@@ -128,6 +138,7 @@ export async function generateShoppingList(
       ingredientName: it.ingredientName,
       unit: it.unit,
       totalQuantity: it.totalQuantity,
+      category: it.category,
       ingredientId: it.ingredientId,
       sourceEventIds: it.sourceEventIds,
     })),

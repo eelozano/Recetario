@@ -15,6 +15,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
+  CategoryOverridesStore,
+  CustomCategoriesStore,
   type FileSystem,
   MealEventRepository,
   RecipeRepository,
@@ -31,6 +33,10 @@ export interface Repos {
   recipes: RecipeRepository;
   meals: MealEventRepository;
   shopping: ShoppingListRepository;
+  /** User's aisle preferences (normalizedName → category), see #69. */
+  categoryOverrides: CategoryOverridesStore;
+  /** User-defined shopping categories (local-only extensions of the presets). */
+  customCategories: CustomCategoriesStore;
 }
 
 let cached: Promise<Repos> | null = null;
@@ -47,6 +53,8 @@ async function build(): Promise<Repos> {
     recipes: new RecipeRepository(fs, dataDir),
     meals: new MealEventRepository(fs, dataDir),
     shopping: new ShoppingListRepository(fs, dataDir),
+    categoryOverrides: new CategoryOverridesStore(fs, dataDir),
+    customCategories: new CustomCategoriesStore(fs, dataDir),
   };
 }
 

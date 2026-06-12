@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ShoppingList, ShoppingListItem } from "@recetario/core";
+import {
+  CATEGORY_LABELS,
+  SHOPPING_CATEGORIES,
+  categorizeIngredient,
+  normalizeIngredientName,
+  type CustomCategory,
+  type ShoppingList,
+  type ShoppingListItem,
+} from "@recetario/core";
 import { getRepos } from "../data/repos";
 import { generateShoppingList } from "../data/queries";
 import { formatQuantity } from "../api/format";
@@ -16,6 +24,13 @@ function counts(list: ShoppingList): { total: number; checked: number } {
   const items = list.items ?? [];
   return { total: items.length, checked: items.filter((i) => i.checked).length };
 }
+
+/**
+ * Sentinel for the row picker's "Auto (reset)" choice — clears the saved
+ * preference instead of setting a category. Leading-underscore ids are
+ * rejected by CustomCategoriesStore, so this can't collide.
+ */
+const RESET_OPTION = "__reset";
 
 /* ---- Sidebar: generate control + saved lists --------------------------- */
 
@@ -134,12 +149,31 @@ interface DetailProps {
 
 export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps) {
   const [list, setList] = useState<ShoppingList | null>(null);
+  const [customs, setCustoms] = useState<CustomCategory[]>([]);
   const [newItem, setNewItem] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // Two-step delete confirmation (window.confirm is unreliable in the webview).
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // User-defined categories (managed in Settings) shape the groups and the
+  // row picker. Reloaded per list selection so Settings edits show up.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { customCategories } = await getRepos();
+        const data = await customCategories.load();
+        if (active) setCustoms(data);
+      } catch {
+        // Non-fatal: groups fall back to the presets.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [listId]);
 
   useEffect(() => {
     let active = true;
@@ -195,15 +229,68 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
     await persist({ ...list, items: items.filter((_, i) => i !== index) });
   }
 
+  // Move the item to another aisle and remember the choice as a preference, so
+  // every future generated list puts this ingredient there too.
+  async function recategorize(index: number, category: string) {
+    if (!list) return;
+    const items = list.items ?? [];
+    const item = items[index];
+    if (!item) return;
+    const ok = await persist({
+      ...list,
+      items: items.map((it, i) => (i === index ? { ...it, category } : it)),
+    });
+    if (!ok) return;
+    try {
+      const { categoryOverrides } = await getRepos();
+      await categoryOverrides.set(item.ingredientName, category);
+    } catch {
+      // The list itself saved; the preference just won't carry forward.
+    }
+  }
+
+  // Drop the saved preference and fall back to the static map. An import-time
+  // LLM category isn't recoverable from the list item, so it reappears on the
+  // next regeneration rather than instantly.
+  async function resetCategory(index: number) {
+    if (!list) return;
+    const items = list.items ?? [];
+    const item = items[index];
+    if (!item) return;
+    const fallback = categorizeIngredient(item.ingredientName);
+    const ok = await persist({
+      ...list,
+      items: items.map((it, i) => (i === index ? { ...it, category: fallback } : it)),
+    });
+    if (!ok) return;
+    try {
+      const { categoryOverrides } = await getRepos();
+      await categoryOverrides.remove(item.ingredientName);
+    } catch {
+      // The list itself saved; the stale preference resurfaces next generation.
+    }
+  }
+
   async function addItem(e: React.FormEvent) {
     e.preventDefault();
     if (!list) return;
     const name = newItem.trim();
     if (!name) return;
     const items = list.items ?? [];
+    // Manual items get a best-effort aisle: the user's saved preference first,
+    // then the static map ("milk" → Dairy).
+    let category: string | null = null;
+    try {
+      const { categoryOverrides } = await getRepos();
+      category =
+        (await categoryOverrides.load()).get(normalizeIngredientName(name)) ?? null;
+    } catch {
+      // No overrides available — fall through to the static map.
+    }
+    category ??= categorizeIngredient(name);
     const ok = await persist({
       ...list,
-      items: [...items, { ingredientName: name, checked: false }],
+      items: [...items, { ingredientName: name, checked: false, category }],
     });
     if (ok) setNewItem(""); // keep the text on failure so the user can retry
   }
@@ -230,12 +317,39 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
   const { total, checked } = counts(list);
   const pct = total ? Math.round((checked / total) * 100) : 0;
 
-  // Display order only — checked items sink to the bottom (stable sort keeps
-  // both groups in stored order), while stored order stays put so unchecking
-  // restores an item's place. Rows carry their source index for mutations.
-  const display = items
-    .map((item, index) => ({ item, index }))
-    .sort((a, b) => Number(a.item.checked ?? false) - Number(b.item.checked ?? false));
+  // Display order only — stored order stays put so unchecking restores an
+  // item's place, and rows carry their source index for mutations. Items are
+  // bucketed by aisle category (unrecognized → "other"), and within each group
+  // checked items sink to the bottom (stable sort keeps stored order). Buckets:
+  // presets in store-walk order, then the user's custom categories, then Other.
+  const buckets: { id: string; label: string }[] = [
+    ...SHOPPING_CATEGORIES.filter((c) => c !== "other").map((c) => ({
+      id: c as string,
+      label: CATEGORY_LABELS[c],
+    })),
+    ...customs.map((c) => ({ id: c.id, label: c.label })),
+    { id: "other", label: CATEGORY_LABELS.other },
+  ];
+  const known = new Set(buckets.map((b) => b.id));
+  const rows = items.map((item, index) => ({ item, index }));
+  const groups = buckets
+    .map((bucket) => ({
+      ...bucket,
+      rows: rows
+        .filter(
+          (r) =>
+            (r.item.category && known.has(r.item.category)
+              ? r.item.category
+              : "other") === bucket.id,
+        )
+        .sort(
+          (a, b) => Number(a.item.checked ?? false) - Number(b.item.checked ?? false),
+        ),
+    }))
+    .filter((g) => g.rows.length > 0);
+  // An entirely uncategorized list (older files, all-manual) renders flat —
+  // a lone "Other" header would be noise.
+  const showHeaders = !(groups.length === 1 && groups[0].id === "other");
 
   return (
     <div className="shop-detail">
@@ -284,27 +398,49 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
           items below.
         </p>
       ) : (
-        <ul className="shop-items">
-          {display.map(({ item, index }) => (
-            <li key={index} className={`shop-item ${item.checked ? "is-checked" : ""}`}>
-              <label className="shop-item__label">
-                <input
-                  type="checkbox"
-                  checked={item.checked ?? false}
-                  onChange={() => toggle(index)}
-                />
-                <span>{itemLabel(item)}</span>
-              </label>
-              <button
-                className="shop-item__remove"
-                title="Remove item"
-                onClick={() => removeItem(index)}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
+        groups.map((group) => (
+          <section key={group.id} className="shop-group">
+            {showHeaders && <h3 className="shop-group__title">{group.label}</h3>}
+            <ul className="shop-items">
+              {group.rows.map(({ item, index }) => (
+                <li key={index} className={`shop-item ${item.checked ? "is-checked" : ""}`}>
+                  <label className="shop-item__label">
+                    <input
+                      type="checkbox"
+                      checked={item.checked ?? false}
+                      onChange={() => toggle(index)}
+                    />
+                    <span>{itemLabel(item)}</span>
+                  </label>
+                  <select
+                    className="shop-item__cat"
+                    title="Category — picking one is remembered for future lists"
+                    value={group.id}
+                    onChange={(e) =>
+                      e.target.value === RESET_OPTION
+                        ? resetCategory(index)
+                        : recategorize(index, e.target.value)
+                    }
+                  >
+                    {buckets.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.label}
+                      </option>
+                    ))}
+                    <option value={RESET_OPTION}>Auto (reset)</option>
+                  </select>
+                  <button
+                    className="shop-item__remove"
+                    title="Remove item"
+                    onClick={() => removeItem(index)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
       )}
 
       <form className="shop-add" onSubmit={addItem}>

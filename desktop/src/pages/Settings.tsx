@@ -10,9 +10,12 @@
  * (no files are moved), so an existing store in the chosen folder is picked up
  * as-is and an empty one simply starts empty.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { CATEGORY_LABELS, asShoppingCategory, type CustomCategory } from "@recetario/core";
+
+import { getRepos } from "../data/repos";
 
 export function Settings() {
   const [dataDir, setDataDir] = useState<string | null>(null);
@@ -108,10 +111,187 @@ export function Settings() {
         {error && <p className="error settings__error">{error}</p>}
       </section>
 
+      <ShoppingCategorySettings />
+
       <p className="muted settings__footnote">
         Recipe import uses an Anthropic API key read from{" "}
         <code>~/.recetario/.env</code>. Editing it from here comes in a later update.
       </p>
     </div>
+  );
+}
+
+/**
+ * Shopping-category customization (#69): user-defined categories (extra groups
+ * beyond the preset six) and the saved aisle preferences (per-ingredient
+ * overrides written when a list item is recategorized).
+ */
+function ShoppingCategorySettings() {
+  const [customs, setCustoms] = useState<CustomCategory[]>([]);
+  const [overrides, setOverrides] = useState<Map<string, string>>(new Map());
+  const [newLabel, setNewLabel] = useState("");
+  const [prefFilter, setPrefFilter] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    try {
+      const { customCategories, categoryOverrides } = await getRepos();
+      setCustoms(await customCategories.load());
+      setOverrides(await categoryOverrides.load());
+    } catch {
+      setError("Could not load shopping category settings.");
+    }
+  }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  // Display label for a category id: preset label, custom label, or — for an
+  // override pointing at a deleted custom category — the raw id.
+  function labelOf(id: string): string {
+    const preset = asShoppingCategory(id);
+    if (preset !== null) return CATEGORY_LABELS[preset];
+    return customs.find((c) => c.id === id)?.label ?? id;
+  }
+
+  // Alphabetical, narrowed by the filter box (matches the ingredient name or
+  // the category it maps to).
+  const visiblePrefs = [...overrides.entries()].sort().filter(([name, category]) => {
+    const q = prefFilter.trim().toLowerCase();
+    if (!q) return true;
+    return name.includes(q) || labelOf(category).toLowerCase().includes(q);
+  });
+
+  async function addCategory(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      const { customCategories } = await getRepos();
+      await customCategories.add(newLabel);
+      setNewLabel("");
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add the category.");
+    }
+  }
+
+  async function removeCategory(id: string) {
+    setError(null);
+    try {
+      const { customCategories } = await getRepos();
+      await customCategories.remove(id);
+      await reload();
+    } catch {
+      setError("Could not remove the category.");
+    }
+  }
+
+  async function removeOverride(name: string) {
+    setError(null);
+    try {
+      const { categoryOverrides } = await getRepos();
+      await categoryOverrides.remove(name);
+      await reload();
+    } catch {
+      setError("Could not remove the preference.");
+    }
+  }
+
+  async function clearOverrides() {
+    setError(null);
+    try {
+      const { categoryOverrides } = await getRepos();
+      await categoryOverrides.clear();
+      await reload();
+    } catch {
+      setError("Could not clear the preferences.");
+    }
+  }
+
+  return (
+    <section className="settings__section">
+      <h3 className="settings__heading">Shopping categories</h3>
+      <p className="muted settings__intro">
+        Add your own sections to the shopping list (say, splitting Produce into Fruit
+        and Veggies). Imports keep using the built-in six; move items into a custom
+        section from the list itself, and the choice sticks. Deleting a section sends
+        its items back to Other.
+      </p>
+
+      <form className="settings__add-row" onSubmit={addCategory}>
+        <input
+          type="text"
+          placeholder="New category — e.g. Fruit"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+        />
+        <button type="submit" className="btn" disabled={!newLabel.trim()}>
+          Add
+        </button>
+      </form>
+
+      {customs.length > 0 && (
+        <ul className="settings__chips">
+          {customs.map((c) => (
+            <li key={c.id} className="settings__chip">
+              {c.label}
+              <button
+                className="settings__chip-remove"
+                title={`Remove "${c.label}"`}
+                onClick={() => removeCategory(c.id)}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h4 className="settings__subheading">
+        Aisle preferences{overrides.size > 0 && ` (${overrides.size})`}
+      </h4>
+      {overrides.size === 0 ? (
+        <p className="muted">
+          None yet. Pick a category on a shopping list item and it's remembered here.
+        </p>
+      ) : (
+        <>
+          {overrides.size > 8 && (
+            <input
+              className="settings__filter"
+              type="search"
+              placeholder="Filter preferences…"
+              value={prefFilter}
+              onChange={(e) => setPrefFilter(e.target.value)}
+            />
+          )}
+          {visiblePrefs.length === 0 ? (
+            <p className="muted">No preferences match “{prefFilter.trim()}”.</p>
+          ) : (
+            <ul className="settings__prefs">
+              {visiblePrefs.map(([name, category]) => (
+                <li key={name} className="settings__pref">
+                  <span className="settings__pref-name">{name}</span>
+                  <span className="muted">→ {labelOf(category)}</span>
+                  <button
+                    className="settings__chip-remove"
+                    title={`Forget the preference for "${name}"`}
+                    onClick={() => removeOverride(name)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button className="btn" onClick={clearOverrides}>
+            Clear all preferences
+          </button>
+        </>
+      )}
+
+      {error && <p className="error settings__error">{error}</p>}
+    </section>
   );
 }

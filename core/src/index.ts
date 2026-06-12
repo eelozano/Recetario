@@ -20,6 +20,14 @@ export type {
   AggregatedItem,
 } from "./services/shopping-aggregator";
 
+export {
+  SHOPPING_CATEGORIES,
+  CATEGORY_LABELS,
+  asShoppingCategory,
+  categorizeIngredient,
+} from "./services/ingredient-categories";
+export type { ShoppingCategory } from "./services/ingredient-categories";
+
 export { MealPlanAggregator } from "./services/meal-planner";
 export type {
   PlannedMeal,

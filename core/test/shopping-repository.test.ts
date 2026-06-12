@@ -31,9 +31,10 @@ function sampleList(): ShoppingList {
         ingredientName: "Onion",
         unit: "pc",
         totalQuantity: new Decimal("5"),
+        category: "produce",
         sourceEventIds: ["evt-1", "evt-2"],
       },
-      { ingredientName: "Salt" }, // quantity-less
+      { ingredientName: "Salt" }, // quantity-less, uncategorized
     ],
   };
 }
@@ -55,8 +56,10 @@ describe("ShoppingListRepository", () => {
     expect(loaded!.items![0].totalQuantity?.toString()).toBe("5");
     expect(loaded!.items![0].sourceEventIds).toEqual(["evt-1", "evt-2"]);
     expect(loaded!.items![0].checked).toBe(false);
+    expect(loaded!.items![0].category).toBe("produce");
     expect(loaded!.items![1].ingredientName).toBe("Salt");
     expect(loaded!.items![1].totalQuantity).toBeUndefined();
+    expect(loaded!.items![1].category).toBeUndefined();
   });
 
   it("lists all saved lists", async () => {

@@ -155,6 +155,7 @@ def draft_to_payload(draft: RecipeInput, *, source_type: str) -> dict[str, Any]:
                 "unit": ing.unit,
                 "rawText": ing.raw_text,
                 "notes": ing.notes,
+                "category": ing.category,
             }
             for ing in draft.ingredients
         ],

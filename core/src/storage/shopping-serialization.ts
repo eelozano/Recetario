@@ -13,6 +13,7 @@ function itemToData(item: ShoppingListItem): Record<string, unknown> {
   const total = decimalToNumber(item.totalQuantity);
   if (total !== undefined) out.total_quantity = total;
   if (item.checked) out.checked = true; // default false → omit
+  if (item.category) out.category = item.category;
   if (item.ingredientId) out.ingredient_id = item.ingredientId;
   if (item.sourceEventIds && item.sourceEventIds.length > 0) {
     out.source_event_ids = item.sourceEventIds;
@@ -31,6 +32,10 @@ function itemFromData(value: unknown): ShoppingListItem | null {
   const total = asDecimal(row.total_quantity);
   if (total !== undefined) item.totalQuantity = total;
   item.checked = asBool(row.checked) ?? false;
+  // Any non-empty id is kept (preset or custom — the registry isn't known
+  // here); the UI buckets unrecognized ids under "Other".
+  const category = asString(row.category)?.trim().toLowerCase();
+  if (category) item.category = category;
   const ingredientId = asString(row.ingredient_id);
   if (ingredientId !== undefined) item.ingredientId = ingredientId;
   if (Array.isArray(row.source_event_ids)) {

@@ -35,7 +35,13 @@ def test_apply_structured_parses_quantities_and_preserves_draft_fields():
         "title": "Garlic Soup",
         "servings": 4,
         "ingredients": [
-            {"name": "garlic", "quantity": 2, "unit": "clove", "raw_text": "2 cloves garlic"},
+            {
+                "name": "garlic",
+                "quantity": 2,
+                "unit": "clove",
+                "raw_text": "2 cloves garlic",
+                "category": "produce",
+            },
             {"name": "salt", "quantity": None, "unit": None, "raw_text": "salt to taste"},
         ],
     }
@@ -54,8 +60,28 @@ def test_apply_structured_parses_quantities_and_preserves_draft_fields():
     assert garlic.quantity == Decimal("2")
     assert garlic.unit == "clove"
     assert garlic.raw_text == "2 cloves garlic"
+    assert garlic.category == "produce"
     assert salt.quantity is None
     assert salt.unit is None
+    assert salt.category is None  # absent from the payload → unknown
+
+
+def test_apply_structured_rejects_off_enum_categories():
+    payload = {
+        "title": "Garlic Soup",
+        "servings": 4,
+        "ingredients": [
+            {
+                "name": "garlic",
+                "quantity": 2,
+                "unit": "clove",
+                "raw_text": "2 cloves garlic",
+                "category": "aisle 9",
+            },
+        ],
+    }
+    result = apply_structured(_draft(), payload)
+    assert result.ingredients[0].category is None
 
 
 def test_apply_structured_falls_back_to_draft_title_and_servings():

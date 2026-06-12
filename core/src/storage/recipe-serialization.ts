@@ -19,6 +19,7 @@ import {
   SourceType,
   type Tag,
 } from "../entities/recipe";
+import { asShoppingCategory } from "../services/ingredient-categories";
 import {
   asDecimal,
   asInt,
@@ -45,6 +46,7 @@ function ingredientToData(line: RecipeIngredient): Record<string, unknown> {
   const gramWeight = num(line.gramWeight);
   if (gramWeight !== undefined) out.gram_weight = gramWeight;
   if (line.notes) out.notes = line.notes;
+  if (line.category) out.category = line.category;
   return out;
 }
 
@@ -139,6 +141,8 @@ function ingredientFromData(value: unknown, position: number): RecipeIngredient 
   if (gramWeight !== undefined) line.gramWeight = gramWeight;
   const notes = asString(row.notes);
   if (notes !== undefined) line.notes = notes;
+  const category = asShoppingCategory(row.category);
+  if (category !== null) line.category = category;
 
   return line;
 }

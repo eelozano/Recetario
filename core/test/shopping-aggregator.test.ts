@@ -2,20 +2,29 @@
 import { describe, it, expect } from "vitest";
 import { Decimal } from "decimal.js";
 
-import { ShoppingAggregator, type ShoppingDemand } from "../src/index";
+import {
+  ShoppingAggregator,
+  type ShoppingCategory,
+  type ShoppingDemand,
+} from "../src/index";
 
 function d(
   name: string,
   qty: number | null,
   unit: string | null,
-  opts: { event?: string; ingredientId?: string | null } = {},
+  opts: {
+    event?: string;
+    ingredientId?: string | null;
+    category?: ShoppingCategory | null;
+  } = {},
 ): ShoppingDemand {
-  const { event = "e1", ingredientId = null } = opts;
+  const { event = "e1", ingredientId = null, category = null } = opts;
   return {
     ingredientName: name,
     normalizedName: name.trim().toLowerCase(),
     quantity: qty !== null ? new Decimal(qty) : null,
     unit,
+    category,
     ingredientId,
     sourceEventId: event,
   };
@@ -80,5 +89,28 @@ describe("ShoppingAggregator", () => {
       d("Onion", 1, "pc", { event: "e5" }),
     ]);
     expect(items[0].sourceEventIds).toEqual(["e5"]);
+  });
+
+  it("carries the demand category onto the item", () => {
+    const items = new ShoppingAggregator().aggregate([
+      d("Onion", 1, "pc", { category: "produce" }),
+    ]);
+    expect(items[0].category).toBe("produce");
+  });
+
+  it("resolves category per normalizedName so duplicates cannot disagree", () => {
+    // Same ingredient in two units (two output items), categorized by only one
+    // recipe — both items, including the uncategorized line, get the category.
+    const items = new ShoppingAggregator().aggregate([
+      d("Onion", 2, "pc", { category: "produce" }),
+      d("Onion", 100, "g", { category: null }),
+    ]);
+    expect(items.length).toBe(2);
+    expect(items.every((i) => i.category === "produce")).toBe(true);
+  });
+
+  it("defaults category to null when no demand has one", () => {
+    const items = new ShoppingAggregator().aggregate([d("Mystery", 1, "pc")]);
+    expect(items[0].category).toBeNull();
   });
 });

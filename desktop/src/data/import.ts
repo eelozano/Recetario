@@ -16,6 +16,7 @@
 import { Decimal } from "decimal.js";
 import { Command, type Child } from "@tauri-apps/plugin-shell";
 import {
+  asShoppingCategory,
   normalizeIngredientName,
   RecipeStatus,
   SourceType,
@@ -37,6 +38,8 @@ interface DraftIngredient {
   unit: string | null;
   rawText: string | null;
   notes: string | null;
+  /** Grocery-aisle category from the LLM pass; absent on keyless imports. */
+  category?: string | null;
 }
 interface DraftPayload {
   title: string;
@@ -192,6 +195,7 @@ function payloadToRecipe(payload: DraftPayload): Recipe {
         unit: i.unit?.trim() || null,
         rawText: i.rawText?.trim() || null,
         notes: i.notes?.trim() || null,
+        category: asShoppingCategory(i.category),
       };
     });
   return {

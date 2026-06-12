@@ -51,6 +51,12 @@ export interface RecipeIngredient {
   usdaFdcId?: number | null;
   gramWeight?: Decimal | null;
   notes?: string | null;
+  /**
+   * Grocery-aisle category (see services/ingredient-categories.ts), assigned by
+   * the import LLM pass when available; null means "resolve via the static map
+   * at shopping-list generation".
+   */
+  category?: string | null;
   id?: Id | null;
 }
 

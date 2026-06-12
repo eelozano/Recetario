@@ -14,6 +14,8 @@ export interface ShoppingListItem {
   unit?: string | null;
   totalQuantity?: Decimal | null;
   checked?: boolean;
+  /** Grocery-aisle category (see services/ingredient-categories.ts); null → "Other". */
+  category?: string | null;
   ingredientId?: Id | null;
   sourceEventIds?: Id[];
   id?: Id | null;

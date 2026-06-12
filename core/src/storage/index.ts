@@ -27,3 +27,15 @@ export { MealEventRepository, MEAL_DIR } from "./meal-repository";
 
 export { shoppingListToYaml, shoppingListFromYaml } from "./shopping-serialization";
 export { ShoppingListRepository, SHOPPING_DIR } from "./shopping-repository";
+
+export {
+  CategoryOverridesStore,
+  CATEGORY_OVERRIDES_FILE,
+} from "./category-overrides";
+
+export {
+  CustomCategoriesStore,
+  CUSTOM_CATEGORIES_FILE,
+  customCategoryId,
+} from "./custom-categories";
+export type { CustomCategory } from "./custom-categories";

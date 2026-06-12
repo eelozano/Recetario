@@ -28,6 +28,7 @@ function sampleRecipe(): Recipe {
         rawText: "2 cloves garlic",
         quantity: new Decimal("2"),
         unit: "clove",
+        category: "produce",
         position: 0,
       },
     ],
@@ -58,6 +59,7 @@ describe("recipe serialization", () => {
     expect(parsed.ingredients![0].ingredient.normalizedName).toBe("garlic");
     expect(parsed.ingredients![0].quantity?.toString()).toBe("2");
     expect(parsed.ingredients![0].unit).toBe("clove");
+    expect(parsed.ingredients![0].category).toBe("produce");
     expect(parsed.instructionsMd).toBe(
       "Sauté the garlic in the oil.\n\nAdd water and simmer.",
     );
@@ -94,6 +96,20 @@ describe("recipe serialization", () => {
     expect(parsed.caloriesPerServing).toBeNull();
     expect(parsed.ingredients?.[0].ingredient.name).toBe("bread");
     expect(parsed.instructionsMd).toBe("Toast it.");
+  });
+
+  it("drops an unknown ingredient category instead of propagating it", () => {
+    const parsed = recipeFromMarkdown(
+      [
+        "---",
+        "title: Quick Toast",
+        "ingredients:",
+        "  - name: bread",
+        "    category: aisle 9",
+        "---",
+      ].join("\n"),
+    );
+    expect(parsed.ingredients?.[0].category).toBeUndefined();
   });
 
   it("survives garbled frontmatter and missing fences", () => {

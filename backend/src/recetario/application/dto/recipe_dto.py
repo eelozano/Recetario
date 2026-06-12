@@ -21,6 +21,8 @@ class RecipeIngredientInput:
     notes: str | None = None
     usda_fdc_id: int | None = None
     gram_weight: Decimal | None = None
+    # Grocery-aisle category (see recipe_extractor._CATEGORIES); None = unknown.
+    category: str | None = None
 
 
 @dataclass

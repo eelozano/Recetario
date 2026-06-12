@@ -20,6 +20,11 @@ export interface ShoppingDemand {
   normalizedName: string;
   quantity: Decimal | null;
   unit: string | null;
+  /**
+   * Grocery-aisle category id (preset or user-defined custom); resolved per
+   * normalizedName across all demands.
+   */
+  category?: string | null;
   ingredientId?: Id | null;
   sourceEventId?: Id | null;
 }
@@ -28,6 +33,7 @@ export interface AggregatedItem {
   ingredientName: string;
   unit: string | null;
   totalQuantity: Decimal | null;
+  category: string | null;
   ingredientId: Id | null;
   sourceEventIds: Id[];
 }
@@ -44,6 +50,9 @@ export class ShoppingAggregator {
   aggregate(demands: readonly ShoppingDemand[]): AggregatedItem[] {
     const groups = new Map<string, ShoppingDemand[]>();
     const order: string[] = [];
+    // Category is resolved per normalizedName — not per (name, unit) group — so
+    // the same ingredient can never land under two headers when sources disagree.
+    const categoryByName = new Map<string, string>();
 
     for (const demand of demands) {
       // Composite (normalizedName, unitKey) key; JSON keeps null distinct from "null".
@@ -55,6 +64,9 @@ export class ShoppingAggregator {
         order.push(key);
       }
       bucket.push(demand);
+      if (demand.category != null && !categoryByName.has(demand.normalizedName)) {
+        categoryByName.set(demand.normalizedName, demand.category);
+      }
     }
 
     const items: AggregatedItem[] = [];
@@ -86,6 +98,7 @@ export class ShoppingAggregator {
         ingredientName: members[0].ingredientName,
         unit: members[0].unit,
         totalQuantity: total,
+        category: categoryByName.get(members[0].normalizedName) ?? null,
         ingredientId,
         sourceEventIds,
       });

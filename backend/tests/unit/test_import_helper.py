@@ -27,7 +27,11 @@ def _draft(**over) -> RecipeInput:
         instructions_md="Mix.\nCook.",
         ingredients=[
             RecipeIngredientInput(
-                name="flour", quantity=Decimal("2"), unit="cup", raw_text="2 cups flour"
+                name="flour",
+                quantity=Decimal("2"),
+                unit="cup",
+                raw_text="2 cups flour",
+                category="pantry",
             )
         ],
         # Macros the scraper might have found — must NOT survive into the payload.
@@ -56,6 +60,7 @@ def test_payload_shape_is_camelcase_and_drops_macros():
             "unit": "cup",
             "rawText": "2 cups flour",
             "notes": None,
+            "category": "pantry",
         }
     ]
     # No macro keys leak through — imports arrive blank for manual entry.

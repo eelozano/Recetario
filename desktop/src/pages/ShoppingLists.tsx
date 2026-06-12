@@ -134,11 +134,16 @@ interface DetailProps {
 
 export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps) {
   const [list, setList] = useState<ShoppingList | null>(null);
+  const [newItem, setNewItem] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Two-step delete confirmation (window.confirm is unreliable in the webview).
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setConfirmingDelete(false);
     (async () => {
       setLoading(true);
       try {
@@ -159,30 +164,61 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
     };
   }, [listId]);
 
-  // Toggle by index: file-backed items have no stable id, and the whole list is
-  // rewritten on any change anyway.
-  async function toggle(index: number) {
-    if (!list) return;
-    const items = list.items ?? [];
-    const next = { ...list, items: items.map((it, i) => (i === index ? { ...it, checked: !it.checked } : it)) };
+  // All mutations go by source index: file-backed items have no stable id, and
+  // the whole list is rewritten on any change anyway.
+  async function persist(next: ShoppingList): Promise<boolean> {
+    const previous = list;
     setList(next); // optimistic
     try {
       const { shopping } = await getRepos();
       await shopping.update(next);
       onChanged(); // refresh sidebar counts
+      return true;
     } catch {
-      setList(list); // revert
+      setList(previous); // revert
+      return false;
     }
   }
 
-  async function remove() {
+  async function toggle(index: number) {
     if (!list) return;
+    const items = list.items ?? [];
+    await persist({
+      ...list,
+      items: items.map((it, i) => (i === index ? { ...it, checked: !it.checked } : it)),
+    });
+  }
+
+  async function removeItem(index: number) {
+    if (!list) return;
+    const items = list.items ?? [];
+    await persist({ ...list, items: items.filter((_, i) => i !== index) });
+  }
+
+  async function addItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!list) return;
+    const name = newItem.trim();
+    if (!name) return;
+    const items = list.items ?? [];
+    const ok = await persist({
+      ...list,
+      items: [...items, { ingredientName: name, checked: false }],
+    });
+    if (ok) setNewItem(""); // keep the text on failure so the user can retry
+  }
+
+  async function remove() {
+    if (!list || deleting) return;
+    setDeleting(true);
     try {
       const { shopping } = await getRepos();
       await shopping.delete(list.id!);
       onDeleted();
     } catch {
       setError("Could not delete this list.");
+      setDeleting(false);
+      setConfirmingDelete(false);
     }
   }
 
@@ -194,6 +230,13 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
   const { total, checked } = counts(list);
   const pct = total ? Math.round((checked / total) * 100) : 0;
 
+  // Display order only — checked items sink to the bottom (stable sort keeps
+  // both groups in stored order), while stored order stays put so unchecking
+  // restores an item's place. Rows carry their source index for mutations.
+  const display = items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => Number(a.item.checked ?? false) - Number(b.item.checked ?? false));
+
   return (
     <div className="shop-detail">
       <header className="shop-detail__header">
@@ -204,9 +247,28 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
           </p>
         </div>
         <div className="shop-detail__actions">
-          <button className="btn" onClick={remove} title="Delete this list">
-            Delete
-          </button>
+          {confirmingDelete ? (
+            <>
+              <button className="btn btn--danger" onClick={remove} disabled={deleting}>
+                {deleting ? "Deleting…" : "Confirm delete"}
+              </button>
+              <button
+                className="btn"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn"
+              onClick={() => setConfirmingDelete(true)}
+              title="Delete this list"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </header>
 
@@ -218,21 +280,44 @@ export function ShoppingListDetail({ listId, onChanged, onDeleted }: DetailProps
 
       {total === 0 ? (
         <p className="muted">
-          This week has no scheduled meals, so the list is empty. Plan some meals in the
-          Calendar, then regenerate.
+          This list is empty. Plan some meals in the Calendar and regenerate, or add
+          items below.
         </p>
       ) : (
         <ul className="shop-items">
-          {items.map((item, i) => (
-            <li key={i} className={`shop-item ${item.checked ? "is-checked" : ""}`}>
+          {display.map(({ item, index }) => (
+            <li key={index} className={`shop-item ${item.checked ? "is-checked" : ""}`}>
               <label className="shop-item__label">
-                <input type="checkbox" checked={item.checked ?? false} onChange={() => toggle(i)} />
+                <input
+                  type="checkbox"
+                  checked={item.checked ?? false}
+                  onChange={() => toggle(index)}
+                />
                 <span>{itemLabel(item)}</span>
               </label>
+              <button
+                className="shop-item__remove"
+                title="Remove item"
+                onClick={() => removeItem(index)}
+              >
+                ×
+              </button>
             </li>
           ))}
         </ul>
       )}
+
+      <form className="shop-add" onSubmit={addItem}>
+        <input
+          type="text"
+          placeholder="Add an item — e.g. paper towels"
+          value={newItem}
+          onChange={(e) => setNewItem(e.target.value)}
+        />
+        <button type="submit" className="btn" disabled={!newItem.trim()}>
+          Add
+        </button>
+      </form>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Decimal } from "decimal.js";
 import { MealType, type MealEvent, type Recipe } from "@recetario/core";
 import { getRepos } from "../data/repos";
+import { filterRecipes } from "../api/recipe-search";
 import { loadWeekPlan, profileToStrings, type WeekPlan } from "../data/queries";
 import { formatAmount, formatQuantity, macroUnit } from "../api/format";
 import { addDays, isoDate, startOfWeek } from "../api/week";
@@ -230,7 +231,7 @@ function AddMealDialog({
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const [recipeId, setRecipeId] = useState<string>(recipes[0]?.id ?? "");
+  const [recipeId, setRecipeId] = useState("");
   const [servings, setServings] = useState("1");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -274,16 +275,10 @@ function AddMealDialog({
           <p className="muted">No recipes yet. Create one first.</p>
         ) : (
           <>
-            <label className="modal__field">
+            <div className="modal__field">
               <span>Recipe</span>
-              <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
-                {recipes.map((r) => (
-                  <option key={r.id} value={r.id ?? ""}>
-                    {r.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <RecipeCombobox recipes={recipes} onChange={setRecipeId} />
+            </div>
             <label className="modal__field">
               <span>Servings</span>
               <input
@@ -312,6 +307,91 @@ function AddMealDialog({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Searchable recipe picker for the add-meal dialog (#67): type to filter by
+ * title/tags, arrow keys + Enter or click to choose. Dependency-free; shares
+ * its matching with the sidebar search. Reports the chosen recipe id ("" while
+ * nothing is selected — typing clears any prior choice so a stale id can't be
+ * submitted under an edited query).
+ */
+function RecipeCombobox({
+  recipes,
+  onChange,
+}: {
+  recipes: Recipe[];
+  onChange: (recipeId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const matches = useMemo(() => filterRecipes(recipes, query), [recipes, query]);
+
+  function select(r: Recipe) {
+    onChange(r.id ?? "");
+    setQuery(r.title);
+    setOpen(false);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setHighlight((h) => Math.min(h + 1, matches.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter" && open && matches[highlight]) {
+      e.preventDefault(); // choose, don't submit the form
+      select(matches[highlight]);
+    } else if (e.key === "Escape" && open) {
+      e.stopPropagation();
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div className="combobox">
+      <input
+        autoFocus
+        type="text"
+        placeholder="Search recipes…"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setHighlight(0);
+          setOpen(true);
+          onChange("");
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={onKeyDown}
+      />
+      {open && (
+        // preventDefault on mousedown keeps the input focused, so blur doesn't
+        // close the list before an option's click lands.
+        <ul className="combobox__list" onMouseDown={(e) => e.preventDefault()}>
+          {matches.length === 0 ? (
+            <li className="combobox__empty muted">No recipes match</li>
+          ) : (
+            matches.map((r, i) => (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  className={`combobox__option ${i === highlight ? "is-active" : ""}`}
+                  onMouseEnter={() => setHighlight(i)}
+                  onClick={() => select(r)}
+                >
+                  {r.title}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
     </div>
   );
 }

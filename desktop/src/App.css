@@ -78,6 +78,21 @@ body {
   background: var(--warn);
 }
 
+.sidebar-search {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.sidebar-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .recipe-list {
   list-style: none;
   margin: 0;
@@ -840,6 +855,52 @@ code {
 .modal__field input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* Searchable recipe picker in the add-meal dialog (#67). */
+.combobox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.combobox input {
+  width: 100%;
+}
+.combobox__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.combobox__option {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.combobox__option.is-active {
+  background: var(--panel-2);
+}
+.combobox__empty {
+  padding: 7px 9px;
+  font-size: 13px;
+  font-weight: 400;
 }
 .modal__actions {
   display: flex;

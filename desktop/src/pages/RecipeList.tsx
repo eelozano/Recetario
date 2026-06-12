@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Recipe } from "@recetario/core";
 import { getRepos } from "../data/repos";
+import { filterRecipes } from "../api/recipe-search";
 
 interface Props {
   onSelect: (recipeId: string) => void;
@@ -12,6 +13,7 @@ interface Props {
 /** Left-hand list of recipes. Clicking one opens its macro breakdown. */
 export function RecipeList({ onSelect, selectedId, reloadKey }: Props) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,31 +49,51 @@ export function RecipeList({ onSelect, selectedId, reloadKey }: Props) {
       </p>
     );
 
+  const visible = filterRecipes(recipes, query);
+
   return (
-    <ul className="recipe-list">
-      {recipes.map((r) => (
-        <li key={r.id}>
-          <button
-            className={`recipe-list__item ${r.id === selectedId ? "is-active" : ""}`}
-            onClick={() => onSelect(r.id!)}
-          >
-            <span className="recipe-list__title">{r.title}</span>
-            <span className="recipe-list__meta">
-              <span className={`pill pill--${r.status}`}>{r.status}</span>
-              {r.servings != null && <span className="muted">{r.servings} servings</span>}
-            </span>
-            {(r.tags?.length ?? 0) > 0 && (
-              <span className="recipe-list__tags">
-                {r.tags!.map((t) => (
-                  <span key={t.name} className="tag">
-                    {t.name}
+    <>
+      <input
+        className="sidebar-search"
+        type="search"
+        placeholder="Search recipes…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setQuery("");
+        }}
+      />
+      {visible.length === 0 ? (
+        <p className="muted">No recipes match “{query.trim()}”.</p>
+      ) : (
+        <ul className="recipe-list">
+          {visible.map((r) => (
+            <li key={r.id}>
+              <button
+                className={`recipe-list__item ${r.id === selectedId ? "is-active" : ""}`}
+                onClick={() => onSelect(r.id!)}
+              >
+                <span className="recipe-list__title">{r.title}</span>
+                <span className="recipe-list__meta">
+                  <span className={`pill pill--${r.status}`}>{r.status}</span>
+                  {r.servings != null && (
+                    <span className="muted">{r.servings} servings</span>
+                  )}
+                </span>
+                {(r.tags?.length ?? 0) > 0 && (
+                  <span className="recipe-list__tags">
+                    {r.tags!.map((t) => (
+                      <span key={t.name} className="tag">
+                        {t.name}
+                      </span>
+                    ))}
                   </span>
-                ))}
-              </span>
-            )}
-          </button>
-        </li>
-      ))}
-    </ul>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }

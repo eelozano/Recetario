@@ -30,6 +30,9 @@ npm run tauri build            # → src-tauri/target/release/bundle/{macos,dmg}
 ## Other commands
 
 - Frontend typecheck/build: `cd desktop && npm run build`
+- Frontend tests: `cd desktop && npm test` (vitest + RTL in jsdom; tests live in
+  `desktop/test/`, mock the Tauri seams `data/repos.ts` + `data/import.ts` — never
+  the real native layer)
 - Core tests: `cd core && npm test` (vitest, Node fs adapter)
 - Backend tests: `cd backend && source .venv/bin/activate && pytest -q`
   - **No live external calls** (USDA/Anthropic/Google) — mocks/fixtures/in-memory.

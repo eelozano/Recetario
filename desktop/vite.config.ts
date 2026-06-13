@@ -1,4 +1,5 @@
-import { defineConfig } from "vite";
+/// <reference types="vitest/config" />
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // @ts-expect-error process is a nodejs global
@@ -7,6 +8,17 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+
+  // Component/integration tests (#73) run in jsdom with the Tauri seams mocked
+  // (data/repos.ts, data/import.ts, @tauri-apps/api) — never the real native
+  // layer. Browser-free by design; see the issue for why not Playwright.
+  test: {
+    environment: "jsdom",
+    globals: false,
+    setupFiles: ["./test/setup.ts"],
+    include: ["test/**/*.test.{ts,tsx}"],
+    css: false,
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

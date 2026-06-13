@@ -124,7 +124,14 @@ function App() {
         {view === "settings" ? (
           <Settings />
         ) : view === "calendar" ? (
-          <WeekCalendar reloadKey={listVersion} />
+          <WeekCalendar
+            reloadKey={listVersion}
+            onOpenRecipe={(id) => {
+              setCreating(false);
+              setSelectedId(id);
+              setView("recipes");
+            }}
+          />
         ) : view === "shopping" ? (
           selectedShoppingId == null ? (
             <div className="empty">

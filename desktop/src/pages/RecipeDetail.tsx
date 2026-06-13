@@ -9,6 +9,7 @@ import {
   type RecipeIngredient,
 } from "@recetario/core";
 import { getRepos } from "../data/repos";
+import { AddMealDialog } from "../components/AddMealDialog";
 import { profileToStrings, recipeMacros } from "../data/queries";
 import {
   formatAmount,
@@ -44,11 +45,14 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
   const [deleting, setDeleting] = useState(false);
   // Whether the detail is in edit mode (the title/ingredients/instructions form).
   const [editing, setEditing] = useState(false);
+  // Whether the "Add to plan" scheduling dialog is open (#70).
+  const [planning, setPlanning] = useState(false);
 
   useEffect(() => {
     let active = true;
     setConfirmingDelete(false);
     setEditing(false);
+    setPlanning(false);
     (async () => {
       setLoading(true);
       setError(null);
@@ -151,6 +155,13 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
               </>
             ) : (
               <>
+                <button
+                  className="btn btn--accent"
+                  onClick={() => setPlanning(true)}
+                  title="Schedule this recipe on the calendar"
+                >
+                  Add to plan
+                </button>
                 <button className="btn" onClick={() => setEditing(true)} title="Edit this recipe">
                   Edit
                 </button>
@@ -211,6 +222,14 @@ export function RecipeDetail({ recipeId, onChanged, onDeleted }: Props) {
       <MacroEditor recipe={recipe} onSaved={reload} />
 
       <SummaryCards totals={totals} perServing={perServing} columns={columns} />
+
+      {planning && (
+        <AddMealDialog
+          presetRecipe={recipe}
+          onClose={() => setPlanning(false)}
+          onAdded={() => setPlanning(false)}
+        />
+      )}
     </div>
   );
 }
